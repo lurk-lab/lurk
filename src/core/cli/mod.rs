@@ -16,6 +16,7 @@ use anyhow::{bail, Result};
 use camino::Utf8PathBuf;
 use clap::{Args, Parser, Subcommand};
 use config::{set_config, Config};
+use itertools::Itertools;
 use microchain::MicrochainArgs;
 use repl::Repl;
 
@@ -38,9 +39,9 @@ enum Command {
 
 #[derive(Args, Debug)]
 struct ReplArgs {
-    /// Optional file to be loaded before entering the REPL
-    #[clap(long, value_parser)]
-    preload: Option<Utf8PathBuf>,
+    /// Space separated list of files to load before entering the REPL
+    #[clap(long, value_parser, num_args(1..))]
+    preload: Vec<Utf8PathBuf>,
 
     #[arg(long)]
     lurkscript: bool,
@@ -48,8 +49,8 @@ struct ReplArgs {
 
 #[derive(Parser, Debug)]
 struct ReplCli {
-    #[clap(long, value_parser)]
-    preload: Option<Utf8PathBuf>,
+    #[clap(long, value_parser, num_args(1..))]
+    preload: Vec<Utf8PathBuf>,
 
     #[arg(long)]
     lurkscript: bool,
@@ -130,8 +131,8 @@ impl Cli {
 impl ReplCli {
     fn run(&self) -> Result<()> {
         let mut repl = Repl::new_native(self.lurkscript);
-        if let Some(lurk_file) = &self.preload {
-            repl.load_file(lurk_file, false)?;
+        for lurk_file in self.preload.iter().unique() {
+            repl.load_file(lurk_file, false)?
         }
         repl.run()
     }
