@@ -225,7 +225,7 @@ impl<F: PrimeField32> Chipset<F> for U64 {
 mod test {
     use p3_baby_bear::BabyBear as F;
     use p3_field::AbstractField;
-    use sphinx_core::{stark::StarkMachine, utils::BabyBearPoseidon2};
+    use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig, StarkMachine};
 
     use crate::{
         air::debug::debug_chip_constraints_and_queries_with_sharding,
@@ -241,7 +241,7 @@ mod test {
 
     #[test]
     fn u64_add_test() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
 
         let add_func = func!(
         fn add(a: [8], b: [8]): [8] {
@@ -290,16 +290,18 @@ mod test {
             config,
             build_chip_vector(&add_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
         let shard = Shard::new(&queries);
-        machine.debug_constraints(&pk, shard.clone());
+        let mut challenger = machine.config().challenger();
+        machine.debug_constraints(&pk, shard, &mut challenger);
     }
 
     #[test]
     fn u64_sub_test() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
 
         let sub_func = func!(
         fn sub(a: [8], b: [8]): [8] {
@@ -348,16 +350,18 @@ mod test {
             config,
             build_chip_vector(&sub_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
         let shard = Shard::new(&queries);
-        machine.debug_constraints(&pk, shard.clone());
+        let mut challenger = machine.config().challenger();
+        machine.debug_constraints(&pk, shard, &mut challenger);
     }
 
     #[test]
     fn u64_mul_test() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
 
         let mul_func = func!(
         fn mul(a: [8], b: [8]): [8] {
@@ -410,16 +414,18 @@ mod test {
             config,
             build_chip_vector(&mul_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
         let shard = Shard::new(&queries);
-        machine.debug_constraints(&pk, shard.clone());
+        let mut challenger = machine.config().challenger();
+        machine.debug_constraints(&pk, shard, &mut challenger);
     }
 
     #[test]
     fn u64_divrem_test() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
 
         let divrem_func = func!(
         fn divrem(a: [8], b: [8]): [16] {
@@ -486,16 +492,18 @@ mod test {
             config,
             build_chip_vector(&divrem_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
         let shard = Shard::new(&queries);
-        machine.debug_constraints(&pk, shard.clone());
+        let mut challenger = machine.config().challenger();
+        machine.debug_constraints(&pk, shard, &mut challenger);
     }
 
     #[test]
     fn u64_lessthan_test() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
 
         let lessthan_func = func!(
         fn lessthan(a: [8], b: [8]): [1] {
@@ -541,16 +549,18 @@ mod test {
             config,
             build_chip_vector(&lessthan_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
         let shard = Shard::new(&queries);
-        machine.debug_constraints(&pk, shard.clone());
+        let mut challenger = machine.config().challenger();
+        machine.debug_constraints(&pk, shard, &mut challenger);
     }
 
     #[test]
     fn u64_iszero_test() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
 
         let iszero_func = func!(
         fn iszero(a: [8]): [1] {
@@ -578,11 +588,13 @@ mod test {
             config,
             build_chip_vector(&iszero_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
         let shard = Shard::new(&queries);
-        machine.debug_constraints(&pk, shard.clone());
+        let mut challenger = machine.config().challenger();
+        machine.debug_constraints(&pk, shard, &mut challenger);
 
         let mut queries = QueryRecord::new(&toplevel);
         let args = &[f(0), f(0), f(0), f(123), f(0), f(0), f(0), f(0)];
@@ -599,10 +611,12 @@ mod test {
             config,
             build_chip_vector(&iszero_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
         let shard = Shard::new(&queries);
-        machine.debug_constraints(&pk, shard.clone());
+        let mut challenger = machine.config().challenger();
+        machine.debug_constraints(&pk, shard, &mut challenger);
     }
 }

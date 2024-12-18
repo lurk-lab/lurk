@@ -1,6 +1,6 @@
 use nom::Parser;
 use once_cell::sync::OnceCell;
-use sphinx_core::utils::BabyBearPoseidon2;
+use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
 
 use crate::{
     core::{

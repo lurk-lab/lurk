@@ -9,7 +9,7 @@ use num_traits::ops::overflowing::OverflowingSub;
 use num_traits::{FromBytes, ToBytes, Unsigned};
 use p3_air::AirBuilder;
 use p3_field::PrimeField;
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::cmp::Ordering;
 use std::ops::Div;
 

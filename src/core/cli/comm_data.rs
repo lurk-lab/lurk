@@ -1,4 +1,4 @@
-use p3_field::Field;
+use p3_field::{Field, PrimeField32};
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 
@@ -16,7 +16,7 @@ pub(crate) struct CommData<F: Hash + Eq> {
     pub(crate) zdag: ZDag<F>,
 }
 
-impl<F: Field> CommData<F> {
+impl<F: PrimeField32> CommData<F> {
     pub(crate) fn hash<C: Chipset<F>>(
         secret: &[F; DIGEST_SIZE],
         payload: &ZPtr<F>,
@@ -29,7 +29,7 @@ impl<F: Field> CommData<F> {
     }
 }
 
-impl<F: Hash + Eq + Default + Copy> CommData<F> {
+impl<F: PrimeField32 + Hash + Eq + Default + Copy> CommData<F> {
     #[inline]
     pub(crate) fn new<C: Chipset<F>>(
         secret: [F; DIGEST_SIZE],
@@ -71,7 +71,7 @@ impl<F: Hash + Eq + Default + Copy> CommData<F> {
     }
 }
 
-impl<F: Field> CommData<F> {
+impl<F: PrimeField32> CommData<F> {
     #[inline]
     pub(crate) fn payload_is_flawed<C: Chipset<F>>(&self, zstore: &mut ZStore<F, C>) -> bool {
         self.zdag.is_flawed(&self.payload, zstore)

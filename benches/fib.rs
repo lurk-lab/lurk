@@ -2,10 +2,10 @@ use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use p3_baby_bear::BabyBear;
 use p3_field::AbstractField;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use sphinx_core::{
+use sp1_core_machine::{
     air::MachineAir,
-    stark::{LocalProver, StarkGenericConfig, StarkMachine},
-    utils::{BabyBearPoseidon2, SphinxCoreOpts},
+    stark::{CpuProver, StarkGenericConfig, StarkMachine},
+    utils::{BabyBearPoseidon2, SP1CoreOpts},
 };
 use std::time::Duration;
 
@@ -48,7 +48,7 @@ fn setup<C: Chipset<BabyBear>>(
     toplevel: &Toplevel<BabyBear, C, NoChip>,
 ) -> (
     List<BabyBear>,
-    FuncChip<'_, BabyBear, C, NoChip>,
+    FuncChip<BabyBear, C, NoChip>,
     QueryRecord<BabyBear>,
 ) {
     let code = build_lurk_expr(arg);
@@ -119,9 +119,9 @@ fn verification(c: &mut Criterion) {
         );
         let (pk, vk) = machine.setup(&LairMachineProgram);
         let mut challenger_p = machine.config().challenger();
-        let opts = SphinxCoreOpts::default();
+        let opts = SP1CoreOpts::default();
         let shard = Shard::new(&record);
-        let proof = machine.prove::<LocalProver<_, _>>(&pk, shard, &mut challenger_p, opts);
+        let proof = machine.prove::<CpuProver<_, _>>(&pk, shard, &mut challenger_p, opts);
 
         b.iter_batched(
             || machine.config().challenger(),
@@ -153,9 +153,9 @@ fn e2e(c: &mut Criterion) {
                 );
                 let (pk, _) = machine.setup(&LairMachineProgram);
                 let mut challenger_p = machine.config().challenger();
-                let opts = SphinxCoreOpts::default();
+                let opts = SP1CoreOpts::default();
                 let shard = Shard::new(&record);
-                machine.prove::<LocalProver<_, _>>(&pk, shard, &mut challenger_p, opts);
+                machine.prove::<CpuProver<_, _>>(&pk, shard, &mut challenger_p, opts);
             },
             BatchSize::SmallInput,
         )

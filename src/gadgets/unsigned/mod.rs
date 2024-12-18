@@ -2,7 +2,7 @@ use crate::gadgets::bytes::{ByteAirRecord, ByteRecord};
 use core::slice;
 use num_traits::{ToBytes, Unsigned};
 use p3_field::AbstractField;
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::array;
 use std::fmt::Debug;
 use std::iter::zip;

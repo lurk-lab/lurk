@@ -1,12 +1,12 @@
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
-use p3_field::{AbstractField, Field, PrimeField32};
+use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use sphinx_core::{
-    air::{EventLens, MachineAir, MachineProgram, WithEvents},
-    stark::Chip,
+use sp1_stark::{
+    air::{InteractionScope, MachineAir, MachineProgram},
+    Chip,
 };
 
-use crate::air::builder::{LookupBuilder, RequireRecord};
+use crate::air::builder::{LookupBuilder, ProvideRecord, RequireRecord};
 use crate::gadgets::bytes::trace::BytesChip;
 
 use super::{
@@ -16,20 +16,21 @@ use super::{
     func_chip::FuncChip,
     memory::MemChip,
     provenance::DEPTH_W,
-    relations::OuterCallRelation,
+    relations::{MemoryRelation, OuterCallRelation},
 };
 
-pub enum LairChip<'a, F, C1: Chipset<F>, C2: Chipset<F>> {
-    Func(FuncChip<'a, F, C1, C2>),
+pub enum LairChip<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
+    Func(FuncChip<F, C1, C2>),
     Mem(MemChip<F>),
     Bytes(BytesChip<F>),
     Entrypoint {
         func_idx: usize,
         num_public_values: usize,
     },
+    Dummy, // FIXME: the prover requires at least one chip with commit_scope local
 }
 
-impl<F, C1: Chipset<F>, C2: Chipset<F>> LairChip<'_, F, C1, C2> {
+impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> LairChip<F, C1, C2> {
     #[inline]
     pub fn entrypoint(func: &Func<F>) -> Self {
         let partial = if func.partial { DEPTH_W } else { 0 };
@@ -41,21 +42,7 @@ impl<F, C1: Chipset<F>, C2: Chipset<F>> LairChip<'_, F, C1, C2> {
     }
 }
 
-impl<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> WithEvents<'a>
-    for LairChip<'_, F, C1, C2>
-{
-    type Events = &'a Shard<'a, F>;
-}
-
-impl<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> EventLens<LairChip<'a, F, C1, C2>>
-    for Shard<'a, F>
-{
-    fn events(&self) -> <LairChip<'a, F, C1, C2> as WithEvents<'_>>::Events {
-        self
-    }
-}
-
-impl<F: Field + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for LairChip<'_, F, C1, C2> {
+impl<F: PrimeField32 + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for LairChip<F, C1, C2> {
     fn width(&self) -> usize {
         match self {
             Self::Func(func_chip) => func_chip.width(),
@@ -63,7 +50,8 @@ impl<F: Field + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for LairChip<'_
             Self::Bytes(bytes_chip) => bytes_chip.width(),
             Self::Entrypoint {
                 num_public_values, ..
-            } => *num_public_values,
+            } => num_public_values + 1,
+            Self::Dummy => 1,
         }
     }
 }
@@ -76,10 +64,8 @@ impl<F: AbstractField> MachineProgram<F> for LairMachineProgram {
     }
 }
 
-impl<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F>
-    for LairChip<'a, F, C1, C2>
-{
-    type Record = Shard<'a, F>;
+impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F> for LairChip<F, C1, C2> {
+    type Record = Shard<F>;
     type Program = LairMachineProgram;
 
     fn name(&self) -> String {
@@ -90,21 +76,18 @@ impl<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F>
             // the following is required by sphinx
             // TODO: engineer our way out of such upstream check
             Self::Bytes(_bytes_chip) => "CPU".to_string(),
+            Self::Dummy => "Dummy".to_string(),
         }
     }
 
-    fn generate_trace<EL: EventLens<Self>>(
-        &self,
-        shard: &EL,
-        _: &mut Self::Record,
-    ) -> RowMajorMatrix<F> {
+    fn generate_trace(&self, shard: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {
         match self {
-            Self::Func(func_chip) => func_chip.generate_trace(shard.events()),
-            Self::Mem(mem_chip) => mem_chip.generate_trace(shard.events()),
+            Self::Func(func_chip) => func_chip.generate_trace(shard),
+            Self::Mem(mem_chip) => mem_chip.generate_trace(shard),
             Self::Bytes(bytes_chip) => {
                 // TODO: Shard the byte events differently?
                 if shard.index() == 0 {
-                    bytes_chip.generate_trace(&shard.events().queries().bytes)
+                    bytes_chip.generate_trace(&shard.queries().bytes)
                 } else {
                     bytes_chip.generate_trace(&Default::default())
                 }
@@ -112,14 +95,25 @@ impl<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F>
             Self::Entrypoint {
                 num_public_values, ..
             } => {
-                let public_values = shard.events().expect_public_values();
+                let mut public_values = shard.expect_public_values().to_vec();
                 assert_eq!(*num_public_values, public_values.len());
-                RowMajorMatrix::new(public_values.to_vec(), *num_public_values)
+                public_values.push(F::one());
+                let height = public_values
+                    .len()
+                    .next_power_of_two()
+                    .max(16 * self.width());
+                public_values.resize(height, F::zero());
+                RowMajorMatrix::new(public_values, self.width())
+            }
+            Self::Dummy => {
+                let mut vals = vec![F::zero(); 16];
+                vals[0] = F::one();
+                RowMajorMatrix::new(vals, 1)
             }
         }
     }
 
-    fn generate_dependencies<EL: EventLens<Self>>(&self, _: &EL, _: &mut Self::Record) {}
+    fn generate_dependencies(&self, _: &Self::Record, _: &mut Self::Record) {}
 
     fn included(&self, shard: &Self::Record) -> bool {
         match self {
@@ -135,6 +129,7 @@ impl<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F>
             }
             Self::Entrypoint { .. } => shard.index == 0,
             Self::Bytes(..) => true,
+            Self::Dummy => true,
         }
     }
 
@@ -151,12 +146,20 @@ impl<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F>
             _ => None,
         }
     }
+
+    fn commit_scope(&self) -> InteractionScope {
+        match self {
+            Self::Dummy => InteractionScope::Local,
+            _ => InteractionScope::Global,
+        }
+    }
 }
 
-impl<AB, C1: Chipset<AB::F>, C2: Chipset<AB::F>> Air<AB> for LairChip<'_, AB::F, C1, C2>
+impl<AB, C1: Chipset<AB::F>, C2: Chipset<AB::F>> Air<AB> for LairChip<AB::F, C1, C2>
 where
     AB: AirBuilderWithPublicValues + LookupBuilder + PairBuilder,
     <AB as AirBuilder>::Var: std::fmt::Debug,
+    AB::F: PrimeField32,
 {
     fn eval(&self, builder: &mut AB) {
         match self {
@@ -168,14 +171,17 @@ where
                 num_public_values,
             } => {
                 let func_idx = AB::F::from_canonical_usize(*func_idx);
-                let public_values = builder.main().first_row().collect::<Vec<_>>();
+                let main = builder.main();
+                let mut public_values = main.row(0).collect::<Vec<_>>();
+                // let mut public_values = builder.main().first_row().collect::<Vec<_>>();
+                let is_real = public_values.pop().expect("Missing is_real");
                 assert_eq!(public_values.len(), *num_public_values);
 
                 // these values aren't correct for all builders!
                 let public_values_from_builder = builder.public_values().to_vec();
                 for (&a, b) in public_values.iter().zip(public_values_from_builder) {
                     // this is only accounted for by the builder used to collect constraints
-                    builder.assert_eq(a, b);
+                    builder.when(is_real).assert_eq(a, b);
                 }
 
                 builder.require(
@@ -186,16 +192,45 @@ where
                         prev_count: AB::F::zero(),
                         count_inv: AB::F::one(),
                     },
-                    AB::F::one(),
+                    is_real,
+                );
+            }
+            Self::Dummy => {
+                // let is_real = builder.main().first_row().collect::<Vec<_>>()[0];
+                let is_real = builder.main().row(0).collect::<Vec<_>>()[0];
+                builder.assert_eq(is_real, is_real);
+                builder.require(
+                    MemoryRelation(
+                        AB::F::from_canonical_u32(1234),
+                        vec![AB::F::from_canonical_u32(1234)],
+                    ),
+                    AB::F::zero(),
+                    RequireRecord {
+                        prev_nonce: AB::F::zero(),
+                        prev_count: AB::F::zero(),
+                        count_inv: AB::F::one(),
+                    },
+                    is_real,
+                );
+                builder.provide(
+                    MemoryRelation(
+                        AB::F::from_canonical_u32(1234),
+                        vec![AB::F::from_canonical_u32(1234)],
+                    ),
+                    ProvideRecord {
+                        last_nonce: AB::F::zero(),
+                        last_count: AB::F::one(),
+                    },
+                    is_real,
                 );
             }
         }
     }
 }
 
-pub fn build_lair_chip_vector<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>>(
-    entry_func_chip: &FuncChip<'a, F, C1, C2>,
-) -> Vec<LairChip<'a, F, C1, C2>> {
+pub fn build_lair_chip_vector<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>>(
+    entry_func_chip: &FuncChip<F, C1, C2>,
+) -> Vec<LairChip<F, C1, C2>> {
     let toplevel = &entry_func_chip.toplevel;
     let func = &entry_func_chip.func;
     let mut chip_vector = Vec::with_capacity(2 + toplevel.num_funcs() + MEM_TABLE_SIZES.len());
@@ -207,6 +242,7 @@ pub fn build_lair_chip_vector<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F
         chip_vector.push(LairChip::Mem(MemChip::new(mem_len)));
     }
     chip_vector.push(LairChip::Bytes(BytesChip::default()));
+    chip_vector.push(LairChip::Dummy);
     chip_vector
 }
 
@@ -216,17 +252,17 @@ pub fn build_chip_vector_from_lair_chips<
     F: PrimeField32,
     C1: Chipset<F>,
     C2: Chipset<F>,
-    I: IntoIterator<Item = LairChip<'a, F, C1, C2>>,
+    I: IntoIterator<Item = LairChip<F, C1, C2>>,
 >(
     lair_chips: I,
-) -> Vec<Chip<F, LairChip<'a, F, C1, C2>>> {
+) -> Vec<Chip<F, LairChip<F, C1, C2>>> {
     lair_chips.into_iter().map(Chip::new).collect()
 }
 
 #[inline]
 pub fn build_chip_vector<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>>(
-    entry_func_chip: &FuncChip<'a, F, C1, C2>,
-) -> Vec<Chip<F, LairChip<'a, F, C1, C2>>> {
+    entry_func_chip: &FuncChip<F, C1, C2>,
+) -> Vec<Chip<F, LairChip<F, C1, C2>>> {
     build_chip_vector_from_lair_chips(build_lair_chip_vector(entry_func_chip))
 }
 
@@ -237,15 +273,12 @@ mod tests {
     use super::*;
 
     use p3_baby_bear::BabyBear;
-    use sphinx_core::utils::BabyBearPoseidon2;
-    use sphinx_core::{
-        stark::{LocalProver, StarkGenericConfig, StarkMachine},
-        utils::SphinxCoreOpts,
-    };
+    use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
+    use sp1_stark::{CpuProver, MachineProver, SP1CoreOpts, StarkGenericConfig, StarkMachine};
 
     #[test]
     fn test_prove_and_verify() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
         type F = BabyBear;
         let toplevel = demo_toplevel::<F>();
         let chip = FuncChip::from_name("factorial", &toplevel);
@@ -260,17 +293,29 @@ mod tests {
             config,
             build_chip_vector(&chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, vk) = machine.setup(&LairMachineProgram);
         let mut challenger_p = machine.config().challenger();
         let mut challenger_v = machine.config().challenger();
+        let mut challenger_d = machine.config().challenger();
         let shard = Shard::new(&queries);
 
-        machine.debug_constraints(&pk, shard.clone());
-        let opts = SphinxCoreOpts::default();
-        let proof = machine.prove::<LocalProver<_, _>>(&pk, shard, &mut challenger_p, opts);
-        machine
+        machine.debug_constraints(&pk, shard.clone(), &mut challenger_d);
+        let opts = SP1CoreOpts::default();
+        let prover = CpuProver::new(machine);
+        let proof = prover
+            .prove(&pk, shard, &mut challenger_p, opts)
+            .expect("proof generates");
+        let config = BabyBearPoseidon2::new();
+        let verifier_machine = StarkMachine::new(
+            config,
+            build_chip_vector(&chip),
+            queries.expect_public_values().len(),
+            true,
+        );
+        verifier_machine
             .verify(&vk, &proof, &mut challenger_v)
             .expect("proof verifies");
     }

@@ -6,7 +6,7 @@ use crate::air::builder::{LookupBuilder, Record, RequireRecord};
 
 use super::execute::QueryRecord;
 
-pub trait Chipset<F>: Sync {
+pub trait Chipset<F: PrimeField32>: Clone + 'static + Send + Sync {
     fn input_size(&self) -> usize;
 
     fn output_size(&self) -> usize;
@@ -35,7 +35,7 @@ pub trait Chipset<F>: Sync {
     fn populate_witness(&self, _input: &[F], _witness: &mut [F]) -> Vec<F>;
 
     #[allow(clippy::too_many_arguments)]
-    fn eval<AB: AirBuilder<F = F> + LookupBuilder>(
+    fn eval<AB>(
         &self,
         builder: &mut AB,
         is_real: AB::Expr,
@@ -43,10 +43,13 @@ pub trait Chipset<F>: Sync {
         witness: &[AB::Var],
         nonce: AB::Expr,
         requires: &[RequireRecord<AB::Var>],
-    ) -> Vec<AB::Expr>;
+    ) -> Vec<AB::Expr>
+    where
+        AB: AirBuilder<F = F> + LookupBuilder;
+    // <AB::Expr as AbstractField>::F: PrimeField;
 }
 
-impl<F, C1: Chipset<F>, C2: Chipset<F>> Chipset<F> for &Either<C1, C2> {
+impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Chipset<F> for Either<C1, C2> {
     fn input_size(&self) -> usize {
         match self {
             Either::Left(c) => c.input_size(),
@@ -105,7 +108,7 @@ impl<F, C1: Chipset<F>, C2: Chipset<F>> Chipset<F> for &Either<C1, C2> {
         }
     }
 
-    fn eval<AB: AirBuilder<F = F> + LookupBuilder>(
+    fn eval<AB>(
         &self,
         builder: &mut AB,
         is_real: AB::Expr,
@@ -113,7 +116,10 @@ impl<F, C1: Chipset<F>, C2: Chipset<F>> Chipset<F> for &Either<C1, C2> {
         witness: &[AB::Var],
         nonce: AB::Expr,
         requires: &[RequireRecord<AB::Var>],
-    ) -> Vec<AB::Expr> {
+    ) -> Vec<AB::Expr>
+    where
+        AB: AirBuilder<F = F> + LookupBuilder,
+    {
         match self {
             Either::Left(c) => c.eval(builder, is_real, input, witness, nonce, requires),
             Either::Right(c) => c.eval(builder, is_real, input, witness, nonce, requires),
@@ -121,10 +127,10 @@ impl<F, C1: Chipset<F>, C2: Chipset<F>> Chipset<F> for &Either<C1, C2> {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct NoChip;
 
-impl<F> Chipset<F> for NoChip {
+impl<F: PrimeField32> Chipset<F> for NoChip {
     fn input_size(&self) -> usize {
         unimplemented!()
     }

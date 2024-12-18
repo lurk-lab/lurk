@@ -2,13 +2,13 @@
 //! of a Lair program. It is the core structure behind Lair.
 
 use either::Either;
-use p3_field::Field;
+use p3_field::PrimeField32;
 use rustc_hash::FxHashMap;
 
 use super::{bytecode::*, chipset::Chipset, expr::*, map::Map, FxIndexMap, List, Name};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Toplevel<F, C1: Chipset<F>, C2: Chipset<F>> {
+pub struct Toplevel<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
     /// Lair functions reachable by the `Call` operator
     pub(crate) func_map: FxIndexMap<Name, Func<F>>,
     /// Extern chips reachable by the `ExternCall` operator. The two different
@@ -22,7 +22,7 @@ pub(crate) struct FuncInfo {
     partial: bool,
 }
 
-impl<F: Field + Ord, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
+impl<F: PrimeField32 + Ord, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
     /// Given a list of Lair functions and a chip map, create a new toplevel by checking and
     /// compiling all functions and collecting them in a name->definition map
     pub fn new(funcs_exprs: &[FuncE<F>], chip_map: FxIndexMap<Name, Either<C1, C2>>) -> Self {
@@ -55,7 +55,7 @@ impl<F: Field + Ord, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
     }
 }
 
-impl<F, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
+impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
     #[inline]
     pub fn func_by_index(&self, i: usize) -> &Func<F> {
         self.func_map
@@ -213,7 +213,7 @@ impl<C1, C2> LinkCtx<'_, C1, C2> {
     }
 }
 
-impl<F: Field + Ord> FuncE<F> {
+impl<F: PrimeField32 + Ord> FuncE<F> {
     /// Checks that a Lair function is well formed
     fn check<C1: Chipset<F>, C2: Chipset<F>>(
         &self,
@@ -283,7 +283,7 @@ impl<F: Field + Ord> FuncE<F> {
     }
 }
 
-impl<F: Field + Ord> BlockE<F> {
+impl<F: PrimeField32 + Ord> BlockE<F> {
     fn check<C1: Chipset<F>, C2: Chipset<F>>(&self, ctx: &mut CheckCtx<'_, C1, C2>) {
         self.ops.iter().for_each(|op| op.check(ctx));
         self.ctrl.check(ctx);
@@ -322,7 +322,7 @@ impl<F: Field + Ord> BlockE<F> {
     }
 }
 
-impl<F: Field + Ord> CtrlE<F> {
+impl<F: PrimeField32 + Ord> CtrlE<F> {
     fn check<C1: Chipset<F>, C2: Chipset<F>>(&self, ctx: &mut CheckCtx<'_, C1, C2>) {
         match &self {
             CtrlE::Return(return_vars) => {
@@ -573,7 +573,7 @@ impl<F: Field + Ord> CtrlE<F> {
     }
 }
 
-impl<F: Field + Ord> OpE<F> {
+impl<F: PrimeField32 + Ord> OpE<F> {
     fn check<C1: Chipset<F>, C2: Chipset<F>>(&self, ctx: &mut CheckCtx<'_, C1, C2>) {
         match self {
             OpE::AssertNe(a, b) | OpE::AssertEq(a, b, _) => {

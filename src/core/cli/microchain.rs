@@ -3,7 +3,7 @@ use clap::Args;
 use p3_baby_bear::BabyBear;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use sphinx_core::stark::StarkGenericConfig;
+use sp1_stark::StarkGenericConfig;
 use std::{
     hash::Hash,
     io::{Read, Write},

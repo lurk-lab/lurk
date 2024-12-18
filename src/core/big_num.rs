@@ -111,7 +111,8 @@ pub fn field_elts_to_biguint<F: PrimeField>(elts: &[F]) -> BigUint {
 mod test {
     use p3_baby_bear::BabyBear as F;
     use p3_field::AbstractField;
-    use sphinx_core::{stark::StarkMachine, utils::BabyBearPoseidon2};
+    use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig};
+    use sp1_stark::StarkMachine;
 
     use crate::{
         air::debug::debug_chip_constraints_and_queries_with_sharding,
@@ -127,7 +128,7 @@ mod test {
 
     #[test]
     fn big_num_lessthan_test() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
 
         let lessthan_func = func!(
         fn lessthan(a: [8], b: [8]): [1] {
@@ -173,10 +174,12 @@ mod test {
             config,
             build_chip_vector(&lessthan_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
+        let mut challenger_d = machine.config().challenger();
         let shard = Shard::new(&queries);
-        machine.debug_constraints(&pk, shard.clone());
+        machine.debug_constraints(&pk, shard.clone(), &mut challenger_d);
     }
 }

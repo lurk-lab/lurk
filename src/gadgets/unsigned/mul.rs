@@ -4,7 +4,7 @@ use itertools::{enumerate, izip};
 use num_traits::{FromBytes, ToBytes, Unsigned};
 use p3_air::AirBuilder;
 use p3_field::AbstractField;
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::array;
 
 /// Witness variables for proving the correctness of a multiplication.
