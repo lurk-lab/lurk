@@ -1,5 +1,5 @@
 use p3_air::{Air, AirBuilder};
-use p3_field::Field;
+use p3_field::PrimeField32;
 use p3_matrix::Matrix;
 use std::{borrow::Borrow, fmt::Debug};
 
@@ -102,7 +102,7 @@ impl<'a, T> ColumnSlice<'a, T> {
     }
 }
 
-fn eval_depth<F: Field, AB>(
+fn eval_depth<F: PrimeField32, AB>(
     builder: &mut AB,
     local: ColumnSlice<'_, AB::Var>,
     index: &mut ColumnIndex,
@@ -130,13 +130,14 @@ fn eval_depth<F: Field, AB>(
     out.extend(dep_depth.iter().cloned());
 }
 
-impl<AB, C1: Chipset<AB::F>, C2: Chipset<AB::F>> Air<AB> for FuncChip<'_, AB::F, C1, C2>
+impl<AB, C1: Chipset<AB::F>, C2: Chipset<AB::F>> Air<AB> for FuncChip<AB::F, C1, C2>
 where
     AB: AirBuilder + LookupBuilder,
     <AB as AirBuilder>::Var: Debug,
+    AB::F: PrimeField32,
 {
     fn eval(&self, builder: &mut AB) {
-        self.func.eval(builder, self.toplevel, self.layout_sizes)
+        self.func.eval(builder, &self.toplevel, self.layout_sizes)
     }
 }
 
@@ -155,7 +156,7 @@ impl<AB: AirBuilder> Val<AB> {
     }
 }
 
-impl<F: Field> Func<F> {
+impl<F: PrimeField32> Func<F> {
     fn eval<AB, C1: Chipset<F>, C2: Chipset<F>>(
         &self,
         builder: &mut AB,
@@ -234,7 +235,7 @@ impl<F: Field> Func<F> {
     }
 }
 
-impl<F: Field> Block<F> {
+impl<F: PrimeField32> Block<F> {
     fn return_sel<AB>(&self, local: ColumnSlice<'_, AB::Var>) -> AB::Expr
     where
         AB: AirBuilder<F = F>,
@@ -267,7 +268,7 @@ impl<F: Field> Block<F> {
     }
 }
 
-impl<F: Field> Op<F> {
+impl<F: PrimeField32> Op<F> {
     #[allow(clippy::too_many_arguments)]
     fn eval<AB, C1: Chipset<F>, C2: Chipset<F>>(
         &self,
@@ -495,7 +496,7 @@ impl<F: Field> Op<F> {
     }
 }
 
-impl<F: Field> Ctrl<F> {
+impl<F: PrimeField32> Ctrl<F> {
     fn eval<AB, C1: Chipset<F>, C2: Chipset<F>>(
         &self,
         builder: &mut AB,
@@ -596,7 +597,10 @@ mod tests {
                 None,
             )
             .unwrap();
-        let factorial_trace = factorial_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let factorial_trace = factorial_chip.generate_trace(shard);
         let _ = debug_constraints_collecting_queries(&factorial_chip, &[], None, &factorial_trace);
 
         let fib_chip = FuncChip::from_name("fib", &toplevel);
@@ -604,7 +608,10 @@ mod tests {
         toplevel
             .execute_by_name("fib", &[F::from_canonical_usize(7)], &mut queries, None)
             .unwrap();
-        let fib_trace = fib_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let fib_trace = fib_chip.generate_trace(shard);
         let _ = debug_constraints_collecting_queries(&fib_chip, &[], None, &fib_trace);
     }
 
@@ -617,7 +624,10 @@ mod tests {
         toplevel
             .execute_by_name("fib", args, &mut queries, None)
             .unwrap();
-        let fib_trace = fib_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let fib_trace = fib_chip.generate_trace(shard);
 
         let _ = debug_constraints_collecting_queries(&fib_chip, &[], None, &fib_trace);
     }
@@ -655,7 +665,10 @@ mod tests {
         toplevel
             .execute_by_name("not", args, &mut queries, None)
             .unwrap();
-        let not_trace = not_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let not_trace = not_chip.generate_trace(shard);
 
         let not_width = not_chip.width();
         #[rustfmt::skip]
@@ -665,6 +678,19 @@ mod tests {
                 1, 8, 0, 0, 1, 1761607681, 0, 1,
                 2, 0, 1, 0, 1,          0, 1, 1,
                 3, 1, 0, 0, 1,          1, 0, 1,
+                // dummy
+                4, 0, 0, 0, 0,          0, 0, 0,
+                5, 0, 0, 0, 0,          0, 0, 0,
+                6, 0, 0, 0, 0,          0, 0, 0,
+                7, 0, 0, 0, 0,          0, 0, 0,
+                8, 0, 0, 0, 0,          0, 0, 0,
+                9, 0, 0, 0, 0,          0, 0, 0,
+                10, 0, 0, 0, 0,          0, 0, 0,
+                11, 0, 0, 0, 0,          0, 0, 0,
+                12, 0, 0, 0, 0,          0, 0, 0,
+                13, 0, 0, 0, 0,          0, 0, 0,
+                14, 0, 0, 0, 0,          0, 0, 0,
+                15, 0, 0, 0, 0,          0, 0, 0,
             ]
             .into_iter()
             .map(F::from_canonical_u32)
@@ -690,7 +716,10 @@ mod tests {
         toplevel
             .execute_by_name("eq", args, &mut queries, None)
             .unwrap();
-        let eq_trace = eq_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let eq_trace = eq_chip.generate_trace(shard);
 
         let eq_width = eq_chip.width();
         #[rustfmt::skip]
@@ -700,6 +729,19 @@ mod tests {
                 1, 4, 4, 1, 0, 1,          0, 1, 1,
                 2, 0, 3, 0, 0, 1,  671088640, 0, 1,
                 3, 0, 0, 1, 0, 1,          0, 1, 1,
+                // dummy
+                4, 0, 0, 0, 0, 0,          0, 0, 0,
+                5, 0, 0, 0, 0, 0,          0, 0, 0,
+                6, 0, 0, 0, 0, 0,          0, 0, 0,
+                7, 0, 0, 0, 0, 0,          0, 0, 0,
+                8, 0, 0, 0, 0, 0,          0, 0, 0,
+                9, 0, 0, 0, 0, 0,          0, 0, 0,
+                10, 0, 0, 0, 0, 0,         0, 0, 0,
+                11, 0, 0, 0, 0, 0,         0, 0, 0,
+                12, 0, 0, 0, 0, 0,         0, 0, 0,
+                13, 0, 0, 0, 0, 0,         0, 0, 0,
+                14, 0, 0, 0, 0, 0,         0, 0, 0,
+                15, 0, 0, 0, 0, 0,         0, 0, 0,
             ]
             .into_iter()
             .map(F::from_canonical_u32)
@@ -745,7 +787,10 @@ mod tests {
             .execute_by_name("if_many", args, &mut queries, None)
             .unwrap();
 
-        let if_many_trace = if_many_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let if_many_trace = if_many_chip.generate_trace(shard);
 
         let if_many_width = if_many_chip.width();
         #[rustfmt::skip]
@@ -756,6 +801,19 @@ mod tests {
                 1, 1, 3, 8, 2, 1, 0, 1, 1, 0,          0,         0, 0, 1,
                 2, 0, 0, 4, 1, 1, 0, 1, 0, 0, 1509949441,         0, 0, 1,
                 3, 0, 0, 0, 9, 1, 0, 1, 0, 0,          0, 447392427, 0, 1,
+                // dummy
+                4, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0,         0, 0, 0,
+                5, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0,         0, 0, 0,
+                6, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0,         0, 0, 0,
+                7, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0,         0, 0, 0,
+                8, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0,         0, 0, 0,
+                9, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0,         0, 0, 0,
+                10, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0,         0, 0, 0,
+                11, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0,         0, 0, 0,
+                12, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0,         0, 0, 0,
+                13, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0,         0, 0, 0,
+                14, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0,         0, 0, 0,
+                15, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0,         0, 0, 0,
             ]
             .into_iter()
             .map(F::from_canonical_u32)
@@ -818,7 +876,10 @@ mod tests {
             .execute_by_name("match_many", args, &mut queries, None)
             .unwrap();
 
-        let match_many_trace = match_many_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let match_many_trace = match_many_chip.generate_trace(shard);
 
         let match_many_width = match_many_chip.width();
         #[rustfmt::skip]
@@ -834,6 +895,14 @@ mod tests {
                 // dummies
                 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ]
             .into_iter()
             .map(F::from_canonical_u32)
@@ -867,13 +936,32 @@ mod tests {
             .execute_by_name("assert", args, &mut queries, None)
             .unwrap();
         let chip = FuncChip::from_name("assert", &toplevel);
-        let trace = chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let trace = chip.generate_trace(shard);
 
         #[rustfmt::skip]
         let expected_trace = RowMajorMatrix::new(
             [
                 // nonce, 4 inputs, 4 output, last nonce, last count, 6 multiplications for the two `contains!`, 4 coefficients for `assert_ne!`, selector
                 0, 2, 4, 6, 8, 2, 4, 6, 8, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
+                // dummy
+                1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ]
             .into_iter()
             .map(F::from_canonical_u32)
@@ -916,7 +1004,10 @@ mod tests {
             .execute_by_name("test", args, &mut queries, None)
             .unwrap();
         let chip = FuncChip::from_name("test", &toplevel);
-        let trace = chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let trace = chip.generate_trace(shard);
 
         #[rustfmt::skip]
         let expected_trace = RowMajorMatrix::new(
@@ -929,6 +1020,19 @@ mod tests {
                 1, 2, 1, 0, 1, 0, 0, 0, 1, 0,
                 2, 3, 1, 0, 1, 0, 0, 0, 1, 0,
                 3, 4, 1, 0, 1, 2, 0, 0, 1, 0,
+                // dummy
+                4, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                6, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                8, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                9, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                10, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                11, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                12, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                13, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                14, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                15, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ]
             .into_iter()
             .map(F::from_canonical_u32)
@@ -955,10 +1059,29 @@ mod tests {
         toplevel
             .execute_by_name("range_test", args, &mut queries, None)
             .unwrap();
-        let trace = range_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let trace = range_chip.generate_trace(shard);
         #[rustfmt::skip]
         let expected_trace = [
             0, 100, 12, 64, 0, 1, 0, 0, 1, 0, 0, 1, 1,
+            // dummy
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]
         .into_iter()
         .map(field_from_u32)

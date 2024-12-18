@@ -145,27 +145,30 @@ impl Chipset<BabyBear> for LurkChip {
         }
     }
 
-    fn eval<AB: AirBuilder<F = BabyBear> + LookupBuilder>(
+    fn eval<AB>(
         &self,
         builder: &mut AB,
         is_real: AB::Expr,
-        preimg: Vec<AB::Expr>,
+        input: Vec<AB::Expr>,
         witness: &[AB::Var],
         nonce: AB::Expr,
         requires: &[RequireRecord<AB::Var>],
-    ) -> Vec<AB::Expr> {
+    ) -> Vec<AB::Expr>
+    where
+        AB: AirBuilder<F = BabyBear> + LookupBuilder,
+    {
         match self {
             LurkChip::Hasher3(hasher) => {
-                hasher.eval(builder, is_real, preimg, witness, nonce, requires)
+                hasher.eval(builder, is_real, input, witness, nonce, requires)
             }
             LurkChip::Hasher4(hasher) => {
-                hasher.eval(builder, is_real, preimg, witness, nonce, requires)
+                hasher.eval(builder, is_real, input, witness, nonce, requires)
             }
             LurkChip::Hasher5(hasher) => {
-                hasher.eval(builder, is_real, preimg, witness, nonce, requires)
+                hasher.eval(builder, is_real, input, witness, nonce, requires)
             }
-            LurkChip::U64(op) => op.eval(builder, is_real, preimg, witness, nonce, requires),
-            LurkChip::BigNum(op) => op.eval(builder, is_real, preimg, witness, nonce, requires),
+            LurkChip::U64(op) => op.eval(builder, is_real, input, witness, nonce, requires),
+            LurkChip::BigNum(op) => op.eval(builder, is_real, input, witness, nonce, requires),
         }
     }
 }

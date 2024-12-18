@@ -69,14 +69,14 @@ impl<'a, T> ColumnMutSlice<'a, T> {
     }
 }
 
-impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> FuncChip<'_, F, C1, C2> {
+impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> FuncChip<F, C1, C2> {
     /// Per-row parallel trace generation
-    pub fn generate_trace(&self, shard: &Shard<'_, F>) -> RowMajorMatrix<F> {
+    pub fn generate_trace(&self, shard: &Shard<F>) -> RowMajorMatrix<F> {
         let func_queries = &shard.queries().func_queries()[self.func.index];
         let range = shard.get_func_range(self.func.index);
         let width = self.width();
         let non_dummy_height = range.len();
-        let height = non_dummy_height.next_power_of_two();
+        let height = non_dummy_height.next_power_of_two().max(16);
         let mut rows = vec![F::zero(); height * width];
         // initializing nonces
         rows.chunks_mut(width)
@@ -125,7 +125,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> FuncChip<'_, F, C1, C2> {
                     slice,
                     queries,
                     requires,
-                    self.toplevel,
+                    &self.toplevel,
                     result.depth,
                     depth_requires,
                 );
@@ -425,7 +425,7 @@ mod tests {
         lair::{
             chipset::NoChip,
             demo_toplevel,
-            execute::{QueryRecord, Shard, ShardingConfig},
+            execute::{QueryRecord, Shard},
             field_from_u32,
             lair_chip::{build_chip_vector, build_lair_chip_vector, LairMachineProgram},
             toplevel::Toplevel,
@@ -435,9 +435,9 @@ mod tests {
 
     use p3_baby_bear::BabyBear as F;
     use p3_field::AbstractField;
-    use sphinx_core::{
-        stark::{LocalProver, MachineRecord, StarkGenericConfig, StarkMachine},
-        utils::{BabyBearPoseidon2, SphinxCoreOpts},
+    use sp1_stark::{
+        baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,
+        StarkGenericConfig, StarkMachine,
     };
 
     use super::FuncChip;
@@ -469,7 +469,10 @@ mod tests {
         toplevel
             .execute_by_name("factorial", args, &mut queries, None)
             .unwrap();
-        let trace = factorial_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let trace = factorial_chip.generate_trace(shard);
         #[rustfmt::skip]
         let expected_trace = [
             // in order: nonce, n, 1/n, fact(n-1), prev_nonce, prev_count, count_inv, n*fact(n-1), last_nonce, last_count and selectors
@@ -482,6 +485,14 @@ mod tests {
             // dummy
             6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]
         .into_iter()
         .map(field_from_u32)
@@ -493,7 +504,10 @@ mod tests {
         toplevel
             .execute_by_name("fib", args, &mut queries, None)
             .unwrap();
-        let trace = fib_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let trace = fib_chip.generate_trace(shard);
 
         #[rustfmt::skip]
         let expected_trace = [
@@ -506,6 +520,14 @@ mod tests {
             5, 2, 1, 3, 2, 1006632961,          1, 1, 0, 0, 1, 0, 0, 0,          1, 0, 0, 1,
             6, 1, 1, 4, 2,          0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 1, 0,
             7, 0, 0, 5, 1,          0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 1, 0, 0,
+            8, 0, 0, 0, 0,          0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 0, 0,
+            9, 0, 0, 0, 0,          0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 0, 0,
+            10, 0, 0, 0, 0,         0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 0, 0,
+            11, 0, 0, 0, 0,         0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 0, 0,
+            12, 0, 0, 0, 0,         0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 0, 0,
+            13, 0, 0, 0, 0,         0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 0, 0,
+            14, 0, 0, 0, 0,         0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 0, 0,
+            15, 0, 0, 0, 0,         0,          0, 0, 0, 0, 0, 0, 0, 0,          0, 0, 0, 0,
         ]
         .into_iter()
         .map(field_from_u32)
@@ -556,7 +578,10 @@ mod tests {
         toplevel
             .execute_by_name("test", args, &mut queries, None)
             .unwrap();
-        let trace = test_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let trace = test_chip.generate_trace(shard);
         #[rustfmt::skip]
         let expected_trace = [
             // The big numbers in the trace are the inverted elements, the witnesses of
@@ -568,6 +593,18 @@ mod tests {
             2, 3, 2, 16, 1, 1,          4,         16,          0,          0,  0, 0, 0, 0, 0, 0, 0, 1, 0,
             // dummy
             3, 0, 0,  0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            4, 0, 0,  0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            5, 0, 0,  0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            6, 0, 0,  0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            7, 0, 0,  0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            8, 0, 0,  0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            9, 0, 0,  0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            10, 0, 0, 0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            11, 0, 0, 0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            12, 0, 0, 0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            13, 0, 0, 0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            14, 0, 0, 0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
+            15, 0, 0, 0, 0, 0,          0,          0,          0,          0,  0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]
         .into_iter()
         .map(field_from_u32)
@@ -636,7 +673,10 @@ mod tests {
         toplevel
             .execute(test_func, three, &mut queries, None)
             .unwrap();
-        let trace = test_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let trace = test_chip.generate_trace(shard);
 
         let expected_trace = [
             // nonce, two inputs, output, last_nonce, last_count, selectors
@@ -644,6 +684,19 @@ mod tests {
             1, 0, 1, 1, 0, 1, 0, 1, 0, 0, //
             2, 1, 0, 2, 0, 1, 0, 0, 1, 0, //
             3, 1, 1, 3, 0, 1, 0, 0, 0, 1, //
+            // dummy
+            4, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            5, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            6, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            7, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            8, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            9, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            10, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            11, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            12, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            13, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            14, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            15, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
         ]
         .into_iter()
         .map(field_from_u32)
@@ -654,7 +707,7 @@ mod tests {
     #[ignore]
     #[test]
     fn lair_shard_test() {
-        sphinx_core::utils::setup_logger();
+        sp1_core_machine::utils::setup_logger();
         type C = NoChip;
         let func_ack = func!(
         fn ackermann(m, n): [1] {
@@ -693,8 +746,7 @@ mod tests {
 
         let lair_chips = build_lair_chip_vector(&ack_chip);
 
-        let shard = Shard::new(&queries);
-        let shards = shard.clone().shard(&ShardingConfig::default());
+        let shards = Shard::new(&queries);
         assert!(
             shards.len() > 1,
             "lair_shard_test must have more than one shard"
@@ -703,7 +755,7 @@ mod tests {
         debug_chip_constraints_and_queries_with_sharding(
             &queries,
             &lair_chips,
-            Some(ShardingConfig::default()),
+            Some(SP1CoreOpts::default()),
         );
 
         let config = BabyBearPoseidon2::new();
@@ -711,17 +763,29 @@ mod tests {
             config,
             build_chip_vector(&ack_chip),
             queries.expect_public_values().len(),
+            true,
         );
 
         let (pk, vk) = machine.setup(&LairMachineProgram);
         let mut challenger_p = machine.config().challenger();
         let mut challenger_v = machine.config().challenger();
-        let shard = Shard::new(&queries);
+        let mut challenger_d = machine.config().challenger();
+        let shards = Shard::new(&queries);
 
-        machine.debug_constraints(&pk, shard.clone());
-        let opts = SphinxCoreOpts::default();
-        let proof = machine.prove::<LocalProver<_, _>>(&pk, shard, &mut challenger_p, opts);
-        machine
+        machine.debug_constraints(&pk, shards.clone(), &mut challenger_d);
+        let opts = SP1CoreOpts::default();
+        let prover = CpuProver::new(machine);
+        let proof = prover
+            .prove(&pk, shards, &mut challenger_p, opts)
+            .expect("proof generates");
+        let config = BabyBearPoseidon2::new();
+        let verifier_machine = StarkMachine::new(
+            config,
+            build_chip_vector(&ack_chip),
+            queries.expect_public_values().len(),
+            true,
+        );
+        verifier_machine
             .verify(&vk, &proof, &mut challenger_v)
             .expect("proof verifies");
     }

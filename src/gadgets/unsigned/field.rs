@@ -2,7 +2,7 @@ use crate::gadgets::bytes::{ByteAirRecord, ByteRecord};
 use num_traits::ToBytes;
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, PrimeField32};
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 
 use super::{UncheckedWord, Word32, WORD32_SIZE};
 

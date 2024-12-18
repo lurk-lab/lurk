@@ -3,7 +3,7 @@ use itertools::enumerate;
 use num_traits::{ToBytes, Zero};
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::array;
 use std::iter::zip;
 

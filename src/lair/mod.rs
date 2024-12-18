@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use p3_field::Field;
+use p3_field::PrimeField32;
 use rustc_hash::FxBuildHasher;
 
 use crate::func;
@@ -50,7 +50,7 @@ pub type List<T> = Box<[T]>;
 pub type FxIndexMap<K, V> = IndexMap<K, V, FxBuildHasher>;
 
 #[allow(dead_code)]
-pub(crate) fn demo_toplevel<F: Field + Ord>() -> Toplevel<F, NoChip, NoChip> {
+pub(crate) fn demo_toplevel<F: PrimeField32 + Ord>() -> Toplevel<F, NoChip, NoChip> {
     let factorial_e = func!(
     fn factorial(n): [1] {
         let one = 1;
