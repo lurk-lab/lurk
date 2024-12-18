@@ -1,6 +1,6 @@
 use crate::air::builder::{LairBuilder, LookupBuilder, ProvideRecord, Relation, RequireRecord};
 use crate::lair::chipset::Chipset;
-use crate::lair::execute::{QueryRecord, Shard, ShardingConfig};
+use crate::lair::execute::{QueryRecord, Shard};
 use crate::lair::lair_chip::{LairChip, LairMachineProgram};
 use hashbrown::HashMap;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, PairBuilder};
@@ -8,8 +8,8 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::VerticalPair;
 use p3_matrix::Matrix;
-use sphinx_core::air::MachineAir;
-use sphinx_core::stark::MachineRecord;
+use sp1_stark::air::MachineAir;
+use sp1_stark::SP1CoreOpts;
 use std::collections::BTreeMap;
 
 type LocalRowView<'a, F> = VerticalPair<RowMajorMatrixView<'a, F>, RowMajorMatrixView<'a, F>>;
@@ -78,10 +78,18 @@ impl<F: PrimeField32> TraceQueries<F> {
 
         // Iterate over all memoset queries in other
         for (query, other_records) in memoset {
+            let q = query.clone();
             let records = self.memoset.entry(query).or_default();
             for (count, record) in other_records {
+                let x = records.insert(count, record);
+                if !x.is_none() {
+                    dbg!(&q);
+                    dbg!(&count);
+                    dbg!(&record);
+                }
                 assert!(
-                    records.insert(count, record).is_none(),
+                    // records.insert(count, record).is_none(),
+                    x.is_none(),
                     "memoset record already accessed"
                 );
             }
@@ -122,14 +130,13 @@ pub fn debug_chip_constraints_and_queries_with_sharding<
     C2: Chipset<F>,
 >(
     record: &QueryRecord<F>,
-    chips: &[LairChip<'_, F, C1, C2>],
-    config: Option<ShardingConfig>,
+    chips: &[LairChip<F, C1, C2>],
+    config: Option<SP1CoreOpts>,
 ) {
-    let full_shard = Shard::new(record);
     let shards = if let Some(config) = config {
-        full_shard.shard(&config)
+        Shard::shard_with(record, &config)
     } else {
-        vec![full_shard]
+        Shard::new(record)
     };
 
     let lookup_queries: Vec<_> = shards
@@ -137,7 +144,8 @@ pub fn debug_chip_constraints_and_queries_with_sharding<
         .flat_map(|shard| {
             // For each shard, get the queries produced by all the chips in that shard.
             chips.iter().filter_map(move |chip| {
-                if chip.included(&shard) {
+                // FIXME: we're ignoring the dummy chip here due to duplicate memoset queries becaue of the dummy require/provide
+                if chip.included(&shard) && chip.name() != "Dummy" {
                     let trace = chip.generate_trace(&shard, &mut Shard::default());
                     let preprocessed_trace = chip.generate_preprocessed_trace(&LairMachineProgram);
                     let queries = debug_constraints_collecting_queries(

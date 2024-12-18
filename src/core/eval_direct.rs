@@ -2140,7 +2140,10 @@ mod test {
                 "ingress -> egress doesn't roundtrip"
             );
 
-            let hash4_trace = hash4_chip.generate_trace(&Shard::new(&queries));
+            let shards = Shard::new(&queries);
+            assert_eq!(shards.len(), 1);
+            let shard = &shards[0];
+            let hash4_trace = hash4_chip.generate_trace(shard);
             debug_constraints_collecting_queries(&hash4_chip, &[], None, &hash4_trace);
         };
 

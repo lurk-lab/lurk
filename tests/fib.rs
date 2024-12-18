@@ -5,10 +5,8 @@
 // If `LOAM_FIB_ARG` is unset, the tests will run with `DEFAULT_FIB_ARG=500`
 use p3_baby_bear::BabyBear;
 use p3_field::AbstractField;
-use sphinx_core::{
-    stark::{LocalProver, StarkGenericConfig, StarkMachine},
-    utils::{BabyBearPoseidon2, SphinxCoreOpts},
-};
+use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
+use sp1_stark::{CpuProver, MachineProver, SP1CoreOpts, StarkGenericConfig, StarkMachine};
 use std::time::Instant;
 
 use lurk::{
@@ -50,7 +48,7 @@ fn setup<C: Chipset<BabyBear>>(
     toplevel: &Toplevel<BabyBear, C, NoChip>,
 ) -> (
     List<BabyBear>,
-    FuncChip<'_, BabyBear, C, NoChip>,
+    FuncChip<BabyBear, C, NoChip>,
     QueryRecord<BabyBear>,
 ) {
     let code = build_lurk_expr(arg);
@@ -86,12 +84,16 @@ fn fib_e2e() {
         config,
         build_chip_vector(&lurk_main),
         record.expect_public_values().len(),
+        true,
     );
     let (pk, _) = machine.setup(&LairMachineProgram);
     let mut challenger_p = machine.config().challenger();
-    let opts = SphinxCoreOpts::default();
+    let opts = SP1CoreOpts::default();
     let shard = Shard::new(&record);
-    machine.prove::<LocalProver<_, _>>(&pk, shard, &mut challenger_p, opts);
+    let prover = CpuProver::new(machine);
+    let _machine_proof = prover
+        .prove(&pk, shard, &mut challenger_p, opts)
+        .expect("Failure while proving");
 
     let elapsed_time = start_time.elapsed().as_secs_f32();
     println!("Total time for e2e-{arg} = {:.2} s", elapsed_time);

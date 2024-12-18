@@ -6,7 +6,8 @@ mod lang_direct;
 
 use p3_baby_bear::BabyBear as F;
 use p3_field::AbstractField;
-use sphinx_core::{stark::StarkMachine, utils::BabyBearPoseidon2};
+use sp1_stark::{StarkGenericConfig, StarkMachine};
+use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, SP1CoreOpts};
 
 use crate::{
     air::debug::debug_chip_constraints_and_queries_with_sharding,
@@ -16,7 +17,7 @@ use crate::{
     },
     lair::{
         chipset::Chipset,
-        execute::{QueryRecord, Shard, ShardingConfig},
+        execute::{QueryRecord, Shard},
         func_chip::FuncChip,
         lair_chip::{
             build_chip_vector_from_lair_chips, build_lair_chip_vector, LairMachineProgram,
@@ -47,7 +48,7 @@ fn run_tests<C2: Chipset<F>>(
 
     let lurk_main = FuncChip::from_name("lurk_main", toplevel);
     let result = toplevel
-        .execute(lurk_main.func, &input, &mut record, None)
+        .execute(&lurk_main.func, &input, &mut record, None)
         .unwrap();
 
     assert_eq!(result.as_ref(), &expected_cloj(zstore).flatten());
@@ -56,11 +57,9 @@ fn run_tests<C2: Chipset<F>>(
 
     // debug constraints and verify lookup queries with and without sharding
     debug_chip_constraints_and_queries_with_sharding(&record, &lair_chips, None);
-    debug_chip_constraints_and_queries_with_sharding(
-        &record,
-        &lair_chips,
-        Some(ShardingConfig { max_shard_size: 4 }),
-    );
+    let mut opts = SP1CoreOpts::default();
+    opts.shard_size = 4;
+    debug_chip_constraints_and_queries_with_sharding(&record, &lair_chips, Some(opts));
 
     // debug constraints with Sphinx
     let full_shard = Shard::new(&record);
@@ -68,7 +67,9 @@ fn run_tests<C2: Chipset<F>>(
         config,
         build_chip_vector_from_lair_chips(lair_chips),
         record.expect_public_values().len(),
+        true,
     );
     let (pk, _) = machine.setup(&LairMachineProgram);
-    machine.debug_constraints(&pk, full_shard);
+    let mut challenger_d = machine.config().challenger();
+    machine.debug_constraints(&pk, full_shard, &mut challenger_d);
 }

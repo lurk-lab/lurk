@@ -27,18 +27,18 @@ impl<F: PrimeField32> MemChip<F> {
         }
     }
 
-    pub fn generate_trace(&self, shard: &Shard<'_, F>) -> RowMajorMatrix<F> {
+    pub fn generate_trace(&self, shard: &Shard<F>) -> RowMajorMatrix<F> {
         let record = &shard.queries().mem_queries;
         let mem_idx = mem_index_from_len(self.len);
         let mem = &record[mem_idx];
         let width = self.width();
 
-        let height = mem.len().next_power_of_two().max(4); // TODO: Remove? loam#118
+        let height = mem.len().next_power_of_two().max(16); // TODO: Remove? loam#118
 
         // TODO: This snippet or equivalent is needed for memory sharding
         // let range = shard.get_mem_range(mem_index_from_len(self.len));
         // let non_dummy_height = range.len();
-        // let height = non_dummy_height.next_power_of_two().max(4);
+        // let height = non_dummy_height.next_power_of_two().max(16);
 
         let mut trace = RowMajorMatrix::new(vec![F::zero(); height * width], width);
 
@@ -145,11 +145,30 @@ mod tests {
         toplevel
             .execute_by_name("test", &[], &mut queries, None)
             .unwrap();
-        let func_trace = test_chip.generate_trace(&Shard::new(&queries));
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let func_trace = test_chip.generate_trace(shard);
 
         #[rustfmt::skip]
         let expected_trace = [
             0, 2, 2, 0, 1, 1, 0, 0, 1, 2, 0, 0, 1, 1, 2, 3, 0, 1, 1006632961, 1,
+            // dummy
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          0, 0,
+            10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0, 0,
+            11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0, 0,
+            12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0, 0,
+            13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0, 0,
+            14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0, 0,
+            15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,         0, 0,
         ]
         .into_iter()
         .map(F::from_canonical_u32)
@@ -158,13 +177,27 @@ mod tests {
 
         let mem_len = 3;
         let mem_chip = MemChip::new(mem_len);
-        let shard = Shard::new(&queries);
-        let mem_trace = mem_chip.generate_trace(&shard);
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
+        let mem_trace = mem_chip.generate_trace(shard);
 
         #[rustfmt::skip]
         let expected_trace = [
             1, 1, 0, 2, 1, 2, 3,
             1, 2, 0, 1, 1, 1, 1,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0,
         ]

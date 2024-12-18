@@ -1,4 +1,4 @@
-use p3_field::{AbstractField, Field};
+use p3_field::{AbstractField, PrimeField32};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -14,7 +14,7 @@ pub(crate) struct LurkData<F: std::hash::Hash + Eq> {
     zdag: ZDag<F>,
 }
 
-impl<F: std::hash::Hash + Eq + Default + Copy> LurkData<F> {
+impl<F: PrimeField32 + std::hash::Hash + Eq + Default + Copy> LurkData<F> {
     #[inline]
     pub(crate) fn new<C: Chipset<F>>(zptr: ZPtr<F>, zstore: &ZStore<F, C>) -> Self {
         let mut zdag = ZDag::default();
@@ -33,7 +33,7 @@ impl<F: std::hash::Hash + Eq + Default + Copy> LurkData<F> {
     }
 }
 
-impl<F: Field> LurkData<F> {
+impl<F: PrimeField32> LurkData<F> {
     #[inline]
     pub(crate) fn is_flawed<C: Chipset<F>>(&self, zstore: &mut ZStore<F, C>) -> bool {
         self.zdag.is_flawed(&self.zptr, zstore)

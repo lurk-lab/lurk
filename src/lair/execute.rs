@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_field::{AbstractField, PrimeField32};
 use rustc_hash::FxHashMap;
-use sphinx_core::stark::{Indexed, MachineRecord};
+use sp1_stark::{MachineRecord, SP1CoreOpts};
 use std::ops::Range;
 
 use crate::{
@@ -63,7 +63,7 @@ pub struct DebugData {
     pub(crate) breakpoints: Vec<usize>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct QueryRecord<F: PrimeField32> {
     pub(crate) public_values: Option<Vec<F>>,
     pub(crate) func_queries: Vec<QueryMap<F>>,
@@ -75,45 +75,69 @@ pub struct QueryRecord<F: PrimeField32> {
 }
 
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
-pub struct Shard<'a, F: PrimeField32> {
+pub struct Shard<F: PrimeField32> {
     pub(crate) index: u32,
-    // TODO: remove this `Option` once Sphinx no longer requires `Default`
-    pub(crate) queries: Option<&'a QueryRecord<F>>,
-    pub(crate) shard_config: ShardingConfig,
+    pub(crate) queries: QueryRecord<F>,
+    pub(crate) opts: SP1CoreOpts,
 }
 
-impl<'a, F: PrimeField32> Shard<'a, F> {
-    /// Creates a new initial shard from the given `QueryRecord`.
+impl<F: PrimeField32> Shard<F> {
+    /// Creates a set of shards from the given `QueryRecord`, using default sharding parameters.
     ///
-    /// # Note
-    ///
-    /// Make sure to call `.shard()` on a `Shard` created by `new` when generating
-    /// the traces, otherwise you will only get the first shard's trace.
+    /// Use `shard_with` if you need a non-default `SP1CoreOpts` config.
     #[inline]
-    pub fn new(queries: &'a QueryRecord<F>) -> Self {
-        Shard {
-            index: 0,
-            queries: queries.into(),
-            shard_config: ShardingConfig::default(),
+    pub fn new(queries: &QueryRecord<F>) -> Vec<Self> {
+        Self::shard_with(queries, &SP1CoreOpts::default())
+    }
+
+    /// Explicitly shard queries according to the given `SP1CoreOpts` config.
+    pub fn shard_with(queries: &QueryRecord<F>, config: &SP1CoreOpts) -> Vec<Self> {
+        let shard_size = config.shard_size;
+        let max_num_func_rows: usize = queries
+            .func_queries
+            .iter()
+            .map(|q| q.len())
+            .max()
+            .unwrap_or_default();
+        // TODO: This snippet or equivalent is needed for memory sharding
+        // let max_num_mem_rows: usize = queries
+        //     .mem_queries
+        //     .iter()
+        //     .map(|q| q.len())
+        //     .max()
+        //     .unwrap_or_default();
+        // let max_num_rows = max_num_func_rows.max(max_num_mem_rows);
+        let max_num_rows = max_num_func_rows;
+
+        let remainder = max_num_rows % shard_size;
+        let num_shards = max_num_rows / shard_size + if remainder > 0 { 1 } else { 0 };
+        let mut shards = Vec::with_capacity(num_shards);
+        for shard_index in 0..num_shards {
+            shards.push(Shard {
+                index: shard_index as u32,
+                queries: queries.clone(),
+                opts: *config,
+            });
         }
+        shards
     }
 
     #[inline]
     pub fn queries(&self) -> &QueryRecord<F> {
-        self.queries.expect("Missing query record reference")
+        &self.queries
     }
 
     pub fn get_func_range(&self, func_index: usize) -> Range<usize> {
         let num_func_queries = self.queries().func_queries[func_index].len();
         let shard_idx = self.index as usize;
-        let max_shard_size = self.shard_config.max_shard_size as usize;
+        let max_shard_size = self.opts.shard_size;
         shard_idx * max_shard_size..((shard_idx + 1) * max_shard_size).min(num_func_queries)
     }
 
     pub fn get_mem_range(&self, mem_chip_idx: usize) -> Range<usize> {
         let num_mem_queries = self.queries().mem_queries[mem_chip_idx].len();
         let shard_idx = self.index as usize;
-        let max_shard_size = self.shard_config.max_shard_size as usize;
+        let max_shard_size = self.opts.shard_size;
         shard_idx * max_shard_size..((shard_idx + 1) * max_shard_size).min(num_mem_queries)
     }
 
@@ -121,20 +145,14 @@ impl<'a, F: PrimeField32> Shard<'a, F> {
     pub(crate) fn expect_public_values(&self) -> &[F] {
         self.queries().expect_public_values()
     }
-}
 
-impl<F: PrimeField32> Indexed for Shard<'_, F> {
-    fn index(&self) -> u32 {
+    pub fn index(&self) -> u32 {
         self.index
     }
 }
 
-impl<F: PrimeField32> MachineRecord for Shard<'_, F> {
-    type Config = ShardingConfig;
-
-    fn set_index(&mut self, index: u32) {
-        self.index = index
-    }
+impl<F: PrimeField32> MachineRecord for Shard<F> {
+    type Config = SP1CoreOpts; // FIXME
 
     fn stats(&self) -> HashMap<String, usize> {
         // TODO: use `IndexMap` instead so the original insertion order is kept
@@ -183,60 +201,11 @@ impl<F: PrimeField32> MachineRecord for Shard<'_, F> {
         // just a no-op because `generate_dependencies` is a no-op
     }
 
-    fn shard(self, config: &Self::Config) -> Vec<Self> {
-        let queries = self.queries();
-        let shard_size = config.max_shard_size as usize;
-        let max_num_func_rows: usize = queries
-            .func_queries
-            .iter()
-            .map(|q| q.len())
-            .max()
-            .unwrap_or_default();
-        // TODO: This snippet or equivalent is needed for memory sharding
-        // let max_num_mem_rows: usize = queries
-        //     .mem_queries
-        //     .iter()
-        //     .map(|q| q.len())
-        //     .max()
-        //     .unwrap_or_default();
-        // let max_num_rows = max_num_func_rows.max(max_num_mem_rows);
-        let max_num_rows = max_num_func_rows;
-
-        let remainder = max_num_rows % shard_size;
-        let num_shards = max_num_rows / shard_size + if remainder > 0 { 1 } else { 0 };
-        let mut shards = Vec::with_capacity(num_shards);
-        for shard_index in 0..num_shards {
-            shards.push(Shard {
-                index: shard_index as u32,
-                queries: self.queries,
-                shard_config: *config,
-            });
-        }
-        shards
-    }
-
     fn public_values<F2: AbstractField>(&self) -> Vec<F2> {
         self.expect_public_values()
             .iter()
             .map(|f| F2::from_canonical_u32(f.as_canonical_u32()))
             .collect()
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ShardingConfig {
-    pub(crate) max_shard_size: u32,
-}
-
-impl Default for ShardingConfig {
-    fn default() -> Self {
-        const DEFAULT_SHARD_SIZE: u32 = 1 << 22;
-        Self {
-            max_shard_size: std::env::var("SHARD_SIZE").map_or_else(
-                |_| DEFAULT_SHARD_SIZE,
-                |s| s.parse::<u32>().unwrap_or(DEFAULT_SHARD_SIZE),
-            ),
-        }
     }
 }
 
@@ -973,7 +942,9 @@ mod tests {
         let args = &[f(2)];
 
         let res1 = toplevel.execute(half, args, &mut queries, None).unwrap();
-        let shard = Shard::new(&queries);
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
         let traces1 = (
             half_chip.generate_trace(&shard),
             double_chip.generate_trace(&shard),
@@ -982,7 +953,9 @@ mod tests {
         // even after `clean`, the preimg of `double(1)` can still be recovered
         queries.clean();
         let res2 = toplevel.execute(half, args, &mut queries, None).unwrap();
-        let shard = Shard::new(&queries);
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
         let traces2 = (
             half_chip.generate_trace(&shard),
             double_chip.generate_trace(&shard),
@@ -992,7 +965,9 @@ mod tests {
 
         queries.clean();
         let res3 = toplevel.execute(half, args, &mut queries, None).unwrap();
-        let shard = Shard::new(&queries);
+        let shards = Shard::new(&queries);
+        assert_eq!(shards.len(), 1);
+        let shard = &shards[0];
         let traces3 = (
             half_chip.generate_trace(&shard),
             double_chip.generate_trace(&shard),
