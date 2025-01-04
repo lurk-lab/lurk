@@ -6,8 +6,8 @@ mod lang_direct;
 
 use p3_baby_bear::BabyBear as F;
 use p3_field::AbstractField;
-use sp1_stark::{StarkGenericConfig, StarkMachine};
 use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, SP1CoreOpts};
+use sp1_stark::{StarkGenericConfig, StarkMachine};
 
 use crate::{
     air::debug::debug_chip_constraints_and_queries_with_sharding,
@@ -55,11 +55,9 @@ fn run_tests<C2: Chipset<F>>(
 
     let lair_chips = build_lair_chip_vector(&lurk_main);
 
-    // debug constraints and verify lookup queries with and without sharding
+    // debug constraints and verify lookup queries with default sharding and with very aggressive sharding
     debug_chip_constraints_and_queries_with_sharding(&record, &lair_chips, None);
-    let mut opts = SP1CoreOpts::default();
-    opts.shard_size = 4;
-    debug_chip_constraints_and_queries_with_sharding(&record, &lair_chips, Some(opts));
+    debug_chip_constraints_and_queries_with_sharding(&record, &lair_chips, Some(SP1CoreOpts { shard_size: 16, ..Default::default() }));
 
     // debug constraints with Sphinx
     let full_shard = Shard::new(&record);

@@ -1,4 +1,4 @@
-use p3_field::{AbstractField, PrimeField32};
+use p3_field::{AbstractField, Field};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,7 @@ use crate::{
 #[derive(Default, Serialize, Deserialize)]
 pub(crate) struct ZDag<F: std::hash::Hash + Eq>(FxHashMap<ZPtr<F>, ZPtrType<F>>);
 
-impl<F: PrimeField32 + std::hash::Hash + Eq + Copy> ZDag<F> {
+impl<F: std::hash::Hash + Eq + Copy> ZDag<F> {
     /// Traverses a ZStore DAG, starting from a given `ZPtr`, while populating
     /// itself.
     pub(crate) fn populate_with<'a, C: Chipset<F>>(
@@ -81,7 +81,7 @@ impl<F: PrimeField32 + std::hash::Hash + Eq + Copy> ZDag<F> {
     }
 }
 
-impl<F: PrimeField32> ZDag<F> {
+impl<F: Field> ZDag<F> {
     /// Returns `true` if one of the following flaws is encountered when traversing
     /// from `zptr`:
     /// * A digest mismatch is found (which is enough to also spot cycles)

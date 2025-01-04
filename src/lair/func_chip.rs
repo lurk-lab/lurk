@@ -1,5 +1,4 @@
 use p3_air::BaseAir;
-use p3_field::PrimeField32;
 
 use super::{
     bytecode::{Block, Ctrl, Func, Op},
@@ -26,13 +25,13 @@ impl LayoutSizes {
     }
 }
 
-pub struct FuncChip<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
-    pub(crate) func: Func<F>,
-    pub(crate) toplevel: Toplevel<F, C1, C2>,
+pub struct FuncChip<F, C1: Chipset<F>, C2: Chipset<F>> {
+    pub(crate) func: Func<F>,                 // FIXME Arc
+    pub(crate) toplevel: Toplevel<F, C1, C2>, // FIXME Arc
     pub(crate) layout_sizes: LayoutSizes,
 }
 
-impl<F: PrimeField32 + Clone, C1: Chipset<F>, C2: Chipset<F>> FuncChip<F, C1, C2> {
+impl<F: Clone, C1: Chipset<F>, C2: Chipset<F>> FuncChip<F, C1, C2> {
     #[inline]
     pub fn from_name(name: &'static str, toplevel: &Toplevel<F, C1, C2>) -> Self {
         let func = toplevel.func_by_name(name);
@@ -47,7 +46,7 @@ impl<F: PrimeField32 + Clone, C1: Chipset<F>, C2: Chipset<F>> FuncChip<F, C1, C2
 
     #[inline]
     pub fn from_func(func: &Func<F>, toplevel: &Toplevel<F, C1, C2>) -> Self {
-        let layout_sizes = func.compute_layout_sizes(&toplevel);
+        let layout_sizes = func.compute_layout_sizes(toplevel);
         Self {
             func: func.clone(),
             toplevel: toplevel.clone(),
@@ -80,7 +79,7 @@ impl<F: PrimeField32 + Clone, C1: Chipset<F>, C2: Chipset<F>> FuncChip<F, C1, C2
     }
 }
 
-impl<F: PrimeField32 + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for FuncChip<F, C1, C2> {
+impl<F: Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for FuncChip<F, C1, C2> {
     fn width(&self) -> usize {
         self.layout_sizes.total()
     }
@@ -88,7 +87,7 @@ impl<F: PrimeField32 + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for Func
 
 pub type Degree = u8;
 
-impl<F: PrimeField32> Func<F> {
+impl<F> Func<F> {
     pub fn compute_layout_sizes<C1: Chipset<F>, C2: Chipset<F>>(
         &self,
         toplevel: &Toplevel<F, C1, C2>,
@@ -116,7 +115,7 @@ impl<F: PrimeField32> Func<F> {
     }
 }
 
-impl<F: PrimeField32> Block<F> {
+impl<F> Block<F> {
     fn compute_layout_sizes<C1: Chipset<F>, C2: Chipset<F>>(
         &self,
         degrees: &mut Vec<Degree>,
@@ -131,7 +130,7 @@ impl<F: PrimeField32> Block<F> {
     }
 }
 
-impl<F: PrimeField32> Ctrl<F> {
+impl<F> Ctrl<F> {
     fn compute_layout_sizes<C1: Chipset<F>, C2: Chipset<F>>(
         &self,
         degrees: &mut Vec<Degree>,
@@ -178,7 +177,7 @@ impl<F: PrimeField32> Ctrl<F> {
     }
 }
 
-impl<F: PrimeField32> Op<F> {
+impl<F> Op<F> {
     fn compute_layout_sizes<C1: Chipset<F>, C2: Chipset<F>>(
         &self,
         degrees: &mut Vec<Degree>,

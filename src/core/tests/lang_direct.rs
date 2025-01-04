@@ -3,7 +3,7 @@
 use once_cell::sync::OnceCell;
 use p3_air::AirBuilder;
 use p3_baby_bear::BabyBear;
-use p3_field::{AbstractField, PrimeField32};
+use p3_field::AbstractField;
 use rustc_hash::FxHashSet;
 use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
 
@@ -27,7 +27,7 @@ use super::run_tests;
 #[derive(Clone)]
 struct SquareGadget;
 
-impl<F: PrimeField32> Chipset<F> for SquareGadget {
+impl<F: AbstractField> Chipset<F> for SquareGadget {
     fn input_size(&self) -> usize {
         1
     }

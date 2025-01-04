@@ -4,7 +4,7 @@ use indexmap::IndexSet;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use p3_baby_bear::BabyBear;
-use p3_field::{AbstractField, PrimeField32};
+use p3_field::{AbstractField, Field, PrimeField32};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use std::{hash::Hash, marker::PhantomData};
@@ -219,14 +219,14 @@ pub enum ZPtrType<F> {
 
 /// This struct selects what the hash functions are in a given chipset
 #[derive(Clone)]
-pub struct Hasher<F: PrimeField32, C: Chipset<F>> {
+pub struct Hasher<F, C: Chipset<F>> {
     hash3: C,
     hash4: C,
     hash5: C,
     _p: PhantomData<F>,
 }
 
-impl<F: PrimeField32, C: Chipset<F>> Hasher<F, C> {
+impl<F, C: Chipset<F>> Hasher<F, C> {
     #[inline]
     pub fn new(hash3: C, hash4: C, hash5: C) -> Self {
         Self {
@@ -249,7 +249,7 @@ impl<F: PrimeField32, C: Chipset<F>> Hasher<F, C> {
 }
 
 #[derive(Clone)]
-pub struct ZStore<F: PrimeField32, C: Chipset<F>> {
+pub struct ZStore<F, C: Chipset<F>> {
     hasher: Hasher<F, C>,
     pub(crate) dag: FxHashMap<ZPtr<F>, ZPtrType<F>>,
     pub hashes3: FxHashMap<[F; HASH3_SIZE], [F; DIGEST_SIZE]>,
@@ -301,7 +301,7 @@ pub(crate) fn builtin_set() -> &'static IndexSet<Symbol, FxBuildHasher> {
     BUILTIN_SET.get_or_init(|| BUILTIN_SYMBOLS.into_iter().map(builtin_sym).collect())
 }
 
-impl<F: PrimeField32, C: Chipset<F>> ZStore<F, C> {
+impl<F: Field, C: Chipset<F>> ZStore<F, C> {
     pub(crate) fn hash3(&mut self, preimg: [F; HASH3_SIZE]) -> [F; DIGEST_SIZE] {
         if let Some(img) = self.hashes3.get(&preimg) {
             return *img;

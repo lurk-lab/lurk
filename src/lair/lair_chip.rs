@@ -1,5 +1,5 @@
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
-use p3_field::{AbstractField, PrimeField32};
+use p3_field::{AbstractField, Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_stark::{
     air::{InteractionScope, MachineAir, MachineProgram},
@@ -19,7 +19,7 @@ use super::{
     relations::{MemoryRelation, OuterCallRelation},
 };
 
-pub enum LairChip<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
+pub enum LairChip<F, C1: Chipset<F>, C2: Chipset<F>> {
     Func(FuncChip<F, C1, C2>),
     Mem(MemChip<F>),
     Bytes(BytesChip<F>),
@@ -42,7 +42,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> LairChip<F, C1, C2> {
     }
 }
 
-impl<F: PrimeField32 + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for LairChip<F, C1, C2> {
+impl<F: Field + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for LairChip<F, C1, C2> {
     fn width(&self) -> usize {
         match self {
             Self::Func(func_chip) => func_chip.width(),
@@ -128,8 +128,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F> for LairChip
                 // !range.is_empty()
             }
             Self::Entrypoint { .. } => shard.index == 0,
-            Self::Bytes(..) => true,
-            Self::Dummy => true,
+            Self::Bytes(..) | Self::Dummy => true,
         }
     }
 
@@ -159,7 +158,6 @@ impl<AB, C1: Chipset<AB::F>, C2: Chipset<AB::F>> Air<AB> for LairChip<AB::F, C1,
 where
     AB: AirBuilderWithPublicValues + LookupBuilder + PairBuilder,
     <AB as AirBuilder>::Var: std::fmt::Debug,
-    AB::F: PrimeField32,
 {
     fn eval(&self, builder: &mut AB) {
         match self {
@@ -248,7 +246,6 @@ pub fn build_lair_chip_vector<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>>(
 
 #[inline]
 pub fn build_chip_vector_from_lair_chips<
-    'a,
     F: PrimeField32,
     C1: Chipset<F>,
     C2: Chipset<F>,
@@ -260,7 +257,7 @@ pub fn build_chip_vector_from_lair_chips<
 }
 
 #[inline]
-pub fn build_chip_vector<'a, F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>>(
+pub fn build_chip_vector<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>>(
     entry_func_chip: &FuncChip<F, C1, C2>,
 ) -> Vec<Chip<F, LairChip<F, C1, C2>>> {
     build_chip_vector_from_lair_chips(build_lair_chip_vector(entry_func_chip))
