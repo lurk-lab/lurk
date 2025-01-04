@@ -110,9 +110,7 @@ struct FuncIndices {
 }
 
 impl FuncIndices {
-    fn new<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>>(
-        toplevel: &Toplevel<F, C1, C2>,
-    ) -> Self {
+    fn new<F, C1: Chipset<F>, C2: Chipset<F>>(toplevel: &Toplevel<F, C1, C2>) -> Self {
         Self {
             lurk_main: toplevel.func_by_name("lurk_main").index,
             eval: toplevel.func_by_name("eval").index,

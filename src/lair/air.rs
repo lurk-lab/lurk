@@ -1,5 +1,5 @@
 use p3_air::{Air, AirBuilder};
-use p3_field::PrimeField32;
+use p3_field::Field;
 use p3_matrix::Matrix;
 use std::{borrow::Borrow, fmt::Debug};
 
@@ -102,7 +102,7 @@ impl<'a, T> ColumnSlice<'a, T> {
     }
 }
 
-fn eval_depth<F: PrimeField32, AB>(
+fn eval_depth<F: Field, AB>(
     builder: &mut AB,
     local: ColumnSlice<'_, AB::Var>,
     index: &mut ColumnIndex,
@@ -134,7 +134,7 @@ impl<AB, C1: Chipset<AB::F>, C2: Chipset<AB::F>> Air<AB> for FuncChip<AB::F, C1,
 where
     AB: AirBuilder + LookupBuilder,
     <AB as AirBuilder>::Var: Debug,
-    AB::F: PrimeField32,
+    AB::F: Field,
 {
     fn eval(&self, builder: &mut AB) {
         self.func.eval(builder, &self.toplevel, self.layout_sizes)
@@ -156,7 +156,7 @@ impl<AB: AirBuilder> Val<AB> {
     }
 }
 
-impl<F: PrimeField32> Func<F> {
+impl<F: Field> Func<F> {
     fn eval<AB, C1: Chipset<F>, C2: Chipset<F>>(
         &self,
         builder: &mut AB,
@@ -235,7 +235,7 @@ impl<F: PrimeField32> Func<F> {
     }
 }
 
-impl<F: PrimeField32> Block<F> {
+impl<F: Field> Block<F> {
     fn return_sel<AB>(&self, local: ColumnSlice<'_, AB::Var>) -> AB::Expr
     where
         AB: AirBuilder<F = F>,
@@ -268,7 +268,7 @@ impl<F: PrimeField32> Block<F> {
     }
 }
 
-impl<F: PrimeField32> Op<F> {
+impl<F: Field> Op<F> {
     #[allow(clippy::too_many_arguments)]
     fn eval<AB, C1: Chipset<F>, C2: Chipset<F>>(
         &self,
@@ -496,7 +496,7 @@ impl<F: PrimeField32> Op<F> {
     }
 }
 
-impl<F: PrimeField32> Ctrl<F> {
+impl<F: Field> Ctrl<F> {
     fn eval<AB, C1: Chipset<F>, C2: Chipset<F>>(
         &self,
         builder: &mut AB,

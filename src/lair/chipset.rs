@@ -6,7 +6,7 @@ use crate::air::builder::{LookupBuilder, Record, RequireRecord};
 
 use super::execute::QueryRecord;
 
-pub trait Chipset<F: PrimeField32>: Clone + 'static + Send + Sync {
+pub trait Chipset<F>: Clone + 'static + Send + Sync {
     fn input_size(&self) -> usize;
 
     fn output_size(&self) -> usize;
@@ -46,10 +46,9 @@ pub trait Chipset<F: PrimeField32>: Clone + 'static + Send + Sync {
     ) -> Vec<AB::Expr>
     where
         AB: AirBuilder<F = F> + LookupBuilder;
-    // <AB::Expr as AbstractField>::F: PrimeField;
 }
 
-impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Chipset<F> for Either<C1, C2> {
+impl<F, C1: Chipset<F>, C2: Chipset<F>> Chipset<F> for Either<C1, C2> {
     fn input_size(&self) -> usize {
         match self {
             Either::Left(c) => c.input_size(),
@@ -130,7 +129,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Chipset<F> for Either<C1, 
 #[derive(Clone, Default)]
 pub struct NoChip;
 
-impl<F: PrimeField32> Chipset<F> for NoChip {
+impl<F> Chipset<F> for NoChip {
     fn input_size(&self) -> usize {
         unimplemented!()
     }

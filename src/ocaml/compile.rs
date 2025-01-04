@@ -3,7 +3,7 @@ use std::{fs, process::Command};
 use anyhow::{anyhow, bail, Result};
 use camino::Utf8Path;
 use nom::Parser;
-use p3_field::PrimeField32;
+use p3_field::Field;
 use tempfile::tempdir;
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 use super::syntax::LambdaSyntax;
 
 /// Compiles and transforms a file into its corresponding Lurk program.
-pub fn compile_and_transform_single_file<F: PrimeField32, C1: Chipset<F>>(
+pub fn compile_and_transform_single_file<F: Field, C1: Chipset<F>>(
     zstore: &mut ZStore<F, C1>,
     state: &StateRcCell,
     file_path: &Utf8Path,
@@ -85,7 +85,7 @@ pub fn compile_single_file_contents(source: &str, file_name: &str) -> Result<Str
 /// Compiles a full "program" from `LambdaSyntax` into its corresponding Lurk data form.
 ///
 /// This adds a wrapper with helper functions used by the transformed code.
-pub fn transform_lambda_program<F: PrimeField32, C1: Chipset<F>>(
+pub fn transform_lambda_program<F: Field, C1: Chipset<F>>(
     zstore: &mut ZStore<F, C1>,
     state: &StateRcCell,
     expr: &LambdaSyntax,
@@ -115,7 +115,7 @@ pub fn transform_lambda_program<F: PrimeField32, C1: Chipset<F>>(
 }
 
 /// Transforms a `LambdaSyntax` into its corresponding Lurk data form.
-fn transform_lambda<F: PrimeField32, C1: Chipset<F>>(
+fn transform_lambda<F: Field, C1: Chipset<F>>(
     zstore: &mut ZStore<F, C1>,
     state: &StateRcCell,
     expr: &LambdaSyntax,

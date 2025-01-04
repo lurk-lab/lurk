@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use p3_field::PrimeField32;
+use p3_field::{AbstractField, Field};
 use rustc_hash::FxBuildHasher;
 
 use crate::func;
@@ -31,7 +31,7 @@ impl std::fmt::Display for Name {
 }
 
 #[inline]
-pub(crate) fn field_from_i32<F: p3_field::AbstractField>(i: i32) -> F {
+pub(crate) fn field_from_i32<F: AbstractField>(i: i32) -> F {
     if i < 0 {
         -F::from_canonical_u32((-i).try_into().unwrap())
     } else {
@@ -41,7 +41,7 @@ pub(crate) fn field_from_i32<F: p3_field::AbstractField>(i: i32) -> F {
 
 #[inline]
 #[allow(dead_code)]
-pub(crate) fn field_from_u32<F: p3_field::AbstractField>(i: u32) -> F {
+pub(crate) fn field_from_u32<F: AbstractField>(i: u32) -> F {
     F::from_canonical_u32(i)
 }
 
@@ -50,7 +50,7 @@ pub type List<T> = Box<[T]>;
 pub type FxIndexMap<K, V> = IndexMap<K, V, FxBuildHasher>;
 
 #[allow(dead_code)]
-pub(crate) fn demo_toplevel<F: PrimeField32 + Ord>() -> Toplevel<F, NoChip, NoChip> {
+pub(crate) fn demo_toplevel<F: Field + Ord>() -> Toplevel<F, NoChip, NoChip> {
     let factorial_e = func!(
     fn factorial(n): [1] {
         let one = 1;
