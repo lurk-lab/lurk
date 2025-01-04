@@ -77,7 +77,7 @@ pub struct QueryRecord<F: PrimeField32> {
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
 pub struct Shard<F: PrimeField32> {
     pub(crate) index: u32,
-    pub(crate) queries: QueryRecord<F>,
+    pub(crate) queries: QueryRecord<F>, // FIXME Arc
     pub(crate) opts: SP1CoreOpts,
 }
 
@@ -946,8 +946,8 @@ mod tests {
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let traces1 = (
-            half_chip.generate_trace(&shard),
-            double_chip.generate_trace(&shard),
+            half_chip.generate_trace(shard),
+            double_chip.generate_trace(shard),
         );
 
         // even after `clean`, the preimg of `double(1)` can still be recovered
@@ -957,8 +957,8 @@ mod tests {
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let traces2 = (
-            half_chip.generate_trace(&shard),
-            double_chip.generate_trace(&shard),
+            half_chip.generate_trace(shard),
+            double_chip.generate_trace(shard),
         );
         assert_eq!(res1, res2);
         assert_eq!(traces1, traces2);
@@ -969,8 +969,8 @@ mod tests {
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let traces3 = (
-            half_chip.generate_trace(&shard),
-            double_chip.generate_trace(&shard),
+            half_chip.generate_trace(shard),
+            double_chip.generate_trace(shard),
         );
         assert_eq!(res2, res3);
         assert_eq!(traces2, traces3);
