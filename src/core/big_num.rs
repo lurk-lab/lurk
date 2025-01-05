@@ -109,10 +109,12 @@ pub fn field_elts_to_biguint<F: PrimeField>(elts: &[F]) -> BigUint {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use p3_baby_bear::BabyBear as F;
     use p3_field::AbstractField;
-    use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig};
     use sp1_stark::StarkMachine;
+    use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig};
 
     use crate::{
         air::debug::debug_chip_constraints_and_queries_with_sharding,
@@ -167,6 +169,7 @@ mod test {
         assert_eq!(out.as_ref(), &[f(1)]);
 
         let lair_chips = build_lair_chip_vector(&lessthan_chip);
+        let queries = Arc::new(queries);
         debug_chip_constraints_and_queries_with_sharding(&queries, &lair_chips, None);
 
         let config = BabyBearPoseidon2::new();
@@ -179,7 +182,7 @@ mod test {
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
         let mut challenger_d = machine.config().challenger();
-        let shard = Shard::new(&queries);
+        let shard = Shard::new_arc(&queries);
         machine.debug_constraints(&pk, shard.clone(), &mut challenger_d);
     }
 }

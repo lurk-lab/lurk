@@ -145,7 +145,7 @@ mod tests {
         toplevel
             .execute_by_name("test", &[], &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let func_trace = test_chip.generate_trace(shard);
@@ -177,7 +177,7 @@ mod tests {
 
         let mem_len = 3;
         let mem_chip = MemChip::new(mem_len);
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries);
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let mem_trace = mem_chip.generate_trace(shard);

@@ -148,7 +148,7 @@ impl FuncIndices {
 pub(crate) struct Repl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
     pub(crate) zstore: ZStore<F, C1>,
     pub(crate) queries: QueryRecord<F>,
-    pub(crate) toplevel: Toplevel<F, C1, C2>,
+    pub(crate) toplevel: Arc<Toplevel<F, C1, C2>>,
     func_indices: FuncIndices,
     pub(crate) env: ZPtr<F>,
     pub(crate) state: StateRcCell,
@@ -220,7 +220,7 @@ impl<C1: Chipset<BabyBear>, C2: Chipset<BabyBear>> Repl<BabyBear, C1, C2> {
             let challenger_v = &mut challenger_p.clone();
             // FIXME: factoring this out soon
             let opts = SP1CoreOpts::default();
-            let shards = Shard::shard_with(&self.queries, &opts);
+            let shards = Shard::shard_with(self.queries.clone(), &opts);
             let prover = CpuProver::new(machine);
             let machine_proof = prover.prove(&pk, shards, challenger_p, opts)?;
             let verifier_machine = new_machine(&self.toplevel);

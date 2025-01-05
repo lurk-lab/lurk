@@ -6,7 +6,7 @@ use sp1_stark::{
     air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,
     StarkGenericConfig, StarkMachine,
 };
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use lurk::{
     core::{
@@ -48,7 +48,7 @@ fn build_lurk_expr(n: usize) -> String {
 
 fn setup<C: Chipset<BabyBear>>(
     n: usize,
-    toplevel: &Toplevel<BabyBear, C, NoChip>,
+    toplevel: &Arc<Toplevel<BabyBear, C, NoChip>>,
 ) -> (
     List<BabyBear>,
     FuncChip<BabyBear, C, NoChip>,
@@ -97,10 +97,11 @@ fn trace_generation(c: &mut Criterion) {
         toplevel
             .execute(lurk_main.func(), &args, &mut record, None)
             .unwrap();
+        let record = Arc::new(record);
         let lair_chips = build_lair_chip_vector(&lurk_main);
         b.iter(|| {
             lair_chips.par_iter().for_each(|func_chip| {
-                let shards = Shard::new(&record);
+                let shards = Shard::new_arc(&record);
                 assert_eq!(shards.len(), 1);
                 let shard = &shards[0];
                 func_chip.generate_trace(shard, &mut Default::default());
@@ -127,7 +128,8 @@ fn verification(c: &mut Criterion) {
         let (pk, vk) = machine.setup(&LairMachineProgram);
         let mut challenger_p = machine.config().challenger();
         let opts = SP1CoreOpts::default();
-        let shards = Shard::new(&record);
+        let record = Arc::new(record);
+        let shards = Shard::new_arc(&record);
         let prover = CpuProver::new(machine);
         let proof = prover.prove(&pk, shards, &mut challenger_p, opts).unwrap();
 
@@ -171,7 +173,7 @@ fn e2e(c: &mut Criterion) {
                 let (pk, _) = machine.setup(&LairMachineProgram);
                 let mut challenger_p = machine.config().challenger();
                 let opts = SP1CoreOpts::default();
-                let shards = Shard::new(&record);
+                let shards = Shard::new(record);
                 let prover = CpuProver::new(machine);
                 prover.prove(&pk, shards, &mut challenger_p, opts).unwrap();
             },

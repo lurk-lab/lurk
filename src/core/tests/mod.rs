@@ -4,13 +4,15 @@ mod eval_ocaml;
 mod lang_compiled;
 mod lang_direct;
 
+use std::sync::Arc;
+
 use p3_baby_bear::BabyBear as F;
 use p3_field::AbstractField;
 use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, SP1CoreOpts};
 use sp1_stark::{StarkGenericConfig, StarkMachine};
 
+use crate::air::debug::debug_chip_constraints_and_queries_with_sharding;
 use crate::{
-    air::debug::debug_chip_constraints_and_queries_with_sharding,
     core::{
         chipset::LurkChip,
         zstore::{ZPtr, ZStore},
@@ -29,7 +31,7 @@ use crate::{
 fn run_tests<C2: Chipset<F>>(
     zptr: &ZPtr<F>,
     env: &ZPtr<F>,
-    toplevel: &Toplevel<F, LurkChip, C2>,
+    toplevel: &Arc<Toplevel<F, LurkChip, C2>>,
     zstore: &mut ZStore<F, LurkChip>,
     expected_cloj: fn(&mut ZStore<F, LurkChip>) -> ZPtr<F>,
     config: BabyBearPoseidon2,
@@ -56,11 +58,19 @@ fn run_tests<C2: Chipset<F>>(
     let lair_chips = build_lair_chip_vector(&lurk_main);
 
     // debug constraints and verify lookup queries with default sharding and with very aggressive sharding
+    let record = Arc::new(record);
     debug_chip_constraints_and_queries_with_sharding(&record, &lair_chips, None);
-    debug_chip_constraints_and_queries_with_sharding(&record, &lair_chips, Some(SP1CoreOpts { shard_size: 16, ..Default::default() }));
+    debug_chip_constraints_and_queries_with_sharding(
+        &record,
+        &lair_chips,
+        Some(SP1CoreOpts {
+            shard_size: 16,
+            ..Default::default()
+        }),
+    );
 
     // debug constraints with Sphinx
-    let full_shard = Shard::new(&record);
+    let full_shard = Shard::new_arc(&record);
     let machine = StarkMachine::new(
         config,
         build_chip_vector_from_lair_chips(lair_chips),

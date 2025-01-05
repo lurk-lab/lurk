@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use nom::Parser;
 use once_cell::sync::OnceCell;
 use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
@@ -24,13 +26,14 @@ use super::run_tests;
 
 #[allow(clippy::type_complexity)]
 static TEST_SETUP_DATA: OnceCell<(
-    Toplevel<F, LurkChip, NoChip>,
+    Arc<Toplevel<F, LurkChip, NoChip>>,
     ZStore<F, LurkChip>,
     BabyBearPoseidon2,
 )> = OnceCell::new();
 
+#[allow(clippy::type_complexity)]
 fn test_setup_data() -> &'static (
-    Toplevel<F, LurkChip, NoChip>,
+    Arc<Toplevel<F, LurkChip, NoChip>>,
     ZStore<F, LurkChip>,
     BabyBearPoseidon2,
 ) {
