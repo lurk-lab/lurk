@@ -223,6 +223,8 @@ impl<F: PrimeField32> Chipset<F> for U64 {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use p3_baby_bear::BabyBear as F;
     use p3_field::AbstractField;
     use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig, StarkMachine};
@@ -283,6 +285,7 @@ mod test {
         );
 
         let lair_chips = build_lair_chip_vector(&add_chip);
+        let queries = Arc::new(queries);
         debug_chip_constraints_and_queries_with_sharding(&queries, &lair_chips, None);
 
         let config = BabyBearPoseidon2::new();
@@ -294,7 +297,7 @@ mod test {
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
-        let shard = Shard::new(&queries);
+        let shard = Shard::new_arc(&queries);
         let mut challenger = machine.config().challenger();
         machine.debug_constraints(&pk, shard, &mut challenger);
     }
@@ -343,6 +346,7 @@ mod test {
         );
 
         let lair_chips = build_lair_chip_vector(&sub_chip);
+        let queries = Arc::new(queries);
         debug_chip_constraints_and_queries_with_sharding(&queries, &lair_chips, None);
 
         let config = BabyBearPoseidon2::new();
@@ -354,7 +358,7 @@ mod test {
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
-        let shard = Shard::new(&queries);
+        let shard = Shard::new_arc(&queries);
         let mut challenger = machine.config().challenger();
         machine.debug_constraints(&pk, shard, &mut challenger);
     }
@@ -407,6 +411,7 @@ mod test {
         );
 
         let lair_chips = build_lair_chip_vector(&mul_chip);
+        let queries = Arc::new(queries);
         debug_chip_constraints_and_queries_with_sharding(&queries, &lair_chips, None);
 
         let config = BabyBearPoseidon2::new();
@@ -418,7 +423,7 @@ mod test {
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
-        let shard = Shard::new(&queries);
+        let shard = Shard::new_arc(&queries);
         let mut challenger = machine.config().challenger();
         machine.debug_constraints(&pk, shard, &mut challenger);
     }
@@ -485,6 +490,7 @@ mod test {
         );
 
         let lair_chips = build_lair_chip_vector(&divrem_chip);
+        let queries = Arc::new(queries);
         debug_chip_constraints_and_queries_with_sharding(&queries, &lair_chips, None);
 
         let config = BabyBearPoseidon2::new();
@@ -496,7 +502,7 @@ mod test {
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
-        let shard = Shard::new(&queries);
+        let shard = Shard::new_arc(&queries);
         let mut challenger = machine.config().challenger();
         machine.debug_constraints(&pk, shard, &mut challenger);
     }
@@ -542,6 +548,7 @@ mod test {
         assert_eq!(out.as_ref(), &[f(1)]);
 
         let lair_chips = build_lair_chip_vector(&lessthan_chip);
+        let queries = Arc::new(queries);
         debug_chip_constraints_and_queries_with_sharding(&queries, &lair_chips, None);
 
         let config = BabyBearPoseidon2::new();
@@ -553,7 +560,7 @@ mod test {
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
-        let shard = Shard::new(&queries);
+        let shard = Shard::new_arc(&queries);
         let mut challenger = machine.config().challenger();
         machine.debug_constraints(&pk, shard, &mut challenger);
     }
@@ -581,6 +588,7 @@ mod test {
         assert_eq!(out.as_ref(), &[f(1)]);
 
         let lair_chips = build_lair_chip_vector(&iszero_chip);
+        let queries = Arc::new(queries);
         debug_chip_constraints_and_queries_with_sharding(&queries, &lair_chips, None);
 
         let config = BabyBearPoseidon2::new();
@@ -592,7 +600,7 @@ mod test {
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
-        let shard = Shard::new(&queries);
+        let shard = Shard::new_arc(&queries);
         let mut challenger = machine.config().challenger();
         machine.debug_constraints(&pk, shard, &mut challenger);
 
@@ -604,6 +612,7 @@ mod test {
         assert_eq!(out.as_ref(), &[f(0)]);
 
         let lair_chips = build_lair_chip_vector(&iszero_chip);
+        let queries = Arc::new(queries);
         debug_chip_constraints_and_queries_with_sharding(&queries, &lair_chips, None);
 
         let config = BabyBearPoseidon2::new();
@@ -615,7 +624,7 @@ mod test {
         );
 
         let (pk, _vk) = machine.setup(&LairMachineProgram);
-        let shard = Shard::new(&queries);
+        let shard = Shard::new_arc(&queries);
         let mut challenger = machine.config().challenger();
         machine.debug_constraints(&pk, shard, &mut challenger);
     }

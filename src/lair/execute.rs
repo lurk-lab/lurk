@@ -4,7 +4,7 @@ use itertools::Itertools;
 use p3_field::{AbstractField, PrimeField32};
 use rustc_hash::FxHashMap;
 use sp1_stark::{MachineRecord, SP1CoreOpts};
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 use crate::{
     air::builder::Record,
@@ -77,7 +77,7 @@ pub struct QueryRecord<F: PrimeField32> {
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
 pub struct Shard<F: PrimeField32> {
     pub(crate) index: u32,
-    pub(crate) queries: QueryRecord<F>, // FIXME Arc
+    pub(crate) queries: Arc<QueryRecord<F>>,
     pub(crate) opts: SP1CoreOpts,
 }
 
@@ -86,12 +86,22 @@ impl<F: PrimeField32> Shard<F> {
     ///
     /// Use `shard_with` if you need a non-default `SP1CoreOpts` config.
     #[inline]
-    pub fn new(queries: &QueryRecord<F>) -> Vec<Self> {
+    pub fn new(queries: QueryRecord<F>) -> Vec<Self> {
         Self::shard_with(queries, &SP1CoreOpts::default())
     }
 
+    #[inline]
+    pub fn new_arc(queries: &Arc<QueryRecord<F>>) -> Vec<Self> {
+        Self::shard_with_arc(queries, &SP1CoreOpts::default())
+    }
+
     /// Explicitly shard queries according to the given `SP1CoreOpts` config.
-    pub fn shard_with(queries: &QueryRecord<F>, config: &SP1CoreOpts) -> Vec<Self> {
+    pub fn shard_with(queries: QueryRecord<F>, config: &SP1CoreOpts) -> Vec<Self> {
+        let queries = Arc::new(queries);
+        Self::shard_with_arc(&queries, config)
+    }
+
+    pub fn shard_with_arc(queries: &Arc<QueryRecord<F>>, config: &SP1CoreOpts) -> Vec<Self> {
         let shard_size = config.shard_size;
         let max_num_func_rows: usize = queries
             .func_queries
@@ -942,7 +952,7 @@ mod tests {
         let args = &[f(2)];
 
         let res1 = toplevel.execute(half, args, &mut queries, None).unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let traces1 = (
@@ -953,7 +963,7 @@ mod tests {
         // even after `clean`, the preimg of `double(1)` can still be recovered
         queries.clean();
         let res2 = toplevel.execute(half, args, &mut queries, None).unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let traces2 = (
@@ -965,7 +975,7 @@ mod tests {
 
         queries.clean();
         let res3 = toplevel.execute(half, args, &mut queries, None).unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let traces3 = (

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use p3_air::BaseAir;
 
 use super::{
@@ -26,26 +28,26 @@ impl LayoutSizes {
 }
 
 pub struct FuncChip<F, C1: Chipset<F>, C2: Chipset<F>> {
-    pub(crate) func: Func<F>,                 // FIXME Arc
-    pub(crate) toplevel: Toplevel<F, C1, C2>, // FIXME Arc
+    pub(crate) func: Arc<Func<F>>,
+    pub(crate) toplevel: Arc<Toplevel<F, C1, C2>>,
     pub(crate) layout_sizes: LayoutSizes,
 }
 
 impl<F: Clone, C1: Chipset<F>, C2: Chipset<F>> FuncChip<F, C1, C2> {
     #[inline]
-    pub fn from_name(name: &'static str, toplevel: &Toplevel<F, C1, C2>) -> Self {
+    pub fn from_name(name: &'static str, toplevel: &Arc<Toplevel<F, C1, C2>>) -> Self {
         let func = toplevel.func_by_name(name);
         Self::from_func(func, toplevel)
     }
 
     #[inline]
-    pub fn from_index(idx: usize, toplevel: &Toplevel<F, C1, C2>) -> Self {
+    pub fn from_index(idx: usize, toplevel: &Arc<Toplevel<F, C1, C2>>) -> Self {
         let func = toplevel.func_by_index(idx);
         Self::from_func(func, toplevel)
     }
 
     #[inline]
-    pub fn from_func(func: &Func<F>, toplevel: &Toplevel<F, C1, C2>) -> Self {
+    pub fn from_func(func: &Arc<Func<F>>, toplevel: &Arc<Toplevel<F, C1, C2>>) -> Self {
         let layout_sizes = func.compute_layout_sizes(toplevel);
         Self {
             func: func.clone(),
@@ -55,7 +57,7 @@ impl<F: Clone, C1: Chipset<F>, C2: Chipset<F>> FuncChip<F, C1, C2> {
     }
 
     #[inline]
-    pub fn from_toplevel(toplevel: &Toplevel<F, C1, C2>) -> Vec<Self> {
+    pub fn from_toplevel(toplevel: &Arc<Toplevel<F, C1, C2>>) -> Vec<Self> {
         toplevel
             .func_map
             .values()
@@ -79,7 +81,7 @@ impl<F: Clone, C1: Chipset<F>, C2: Chipset<F>> FuncChip<F, C1, C2> {
     }
 }
 
-impl<F: Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for FuncChip<F, C1, C2> {
+impl<F: Send + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for FuncChip<F, C1, C2> {
     fn width(&self) -> usize {
         self.layout_sizes.total()
     }
@@ -146,7 +148,7 @@ impl<F> Ctrl<F> {
             Ctrl::Choose(_, cases, branches) => {
                 let degrees_len = degrees.len();
                 let mut max_aux = *aux;
-                let mut process = |block: &Block<_>| {
+                let mut process = |block: &Arc<Block<_>>| {
                     let block_aux = &mut aux.clone();
                     block.compute_layout_sizes(degrees, toplevel, block_aux, sel);
                     degrees.truncate(degrees_len);

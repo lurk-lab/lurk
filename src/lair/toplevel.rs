@@ -1,6 +1,8 @@
 //! The toplevel is the collection of all compiled Lair functions and external chips
 //! of a Lair program. It is the core structure behind Lair.
 
+use std::sync::Arc;
+
 use either::Either;
 use p3_field::Field;
 use rustc_hash::FxHashMap;
@@ -10,7 +12,7 @@ use super::{bytecode::*, chipset::Chipset, expr::*, map::Map, FxIndexMap, List, 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Toplevel<F, C1: Chipset<F>, C2: Chipset<F>> {
     /// Lair functions reachable by the `Call` operator
-    pub(crate) func_map: FxIndexMap<Name, Func<F>>,
+    pub(crate) func_map: FxIndexMap<Name, Arc<Func<F>>>,
     /// Extern chips reachable by the `ExternCall` operator. The two different
     /// chipset types can be used to encode native and custom chips.
     pub(crate) chip_map: FxIndexMap<Name, Either<C1, C2>>,
@@ -25,7 +27,7 @@ pub(crate) struct FuncInfo {
 impl<F: Field + Ord, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
     /// Given a list of Lair functions and a chip map, create a new toplevel by checking and
     /// compiling all functions and collecting them in a name->definition map
-    pub fn new(funcs_exprs: &[FuncE<F>], chip_map: FxIndexMap<Name, Either<C1, C2>>) -> Self {
+    pub fn new(funcs_exprs: &[FuncE<F>], chip_map: FxIndexMap<Name, Either<C1, C2>>) -> Arc<Self> {
         let info_map = funcs_exprs
             .iter()
             .map(|func| {
@@ -43,21 +45,21 @@ impl<F: Field + Ord, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
             .map(|(i, func)| {
                 func.check(&info_map, &chip_map);
                 let cfunc = func.expand().compile(i, &info_map, &chip_map);
-                (func.name, cfunc)
+                (func.name, Arc::new(cfunc))
             })
             .collect();
-        Toplevel { func_map, chip_map }
+        Arc::new(Toplevel { func_map, chip_map })
     }
 
     #[inline]
-    pub fn new_pure(funcs_exprs: &[FuncE<F>]) -> Self {
+    pub fn new_pure(funcs_exprs: &[FuncE<F>]) -> Arc<Self> {
         Toplevel::new(funcs_exprs, FxIndexMap::default())
     }
 }
 
 impl<F, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
     #[inline]
-    pub fn func_by_index(&self, i: usize) -> &Func<F> {
+    pub fn func_by_index(&self, i: usize) -> &Arc<Func<F>> {
         self.func_map
             .get_index(i)
             .unwrap_or_else(|| panic!("Func index {i} out of bounds"))
@@ -65,7 +67,7 @@ impl<F, C1: Chipset<F>, C2: Chipset<F>> Toplevel<F, C1, C2> {
     }
 
     #[inline]
-    pub fn func_by_name(&self, name: &'static str) -> &Func<F> {
+    pub fn func_by_name(&self, name: &'static str) -> &Arc<Func<F>> {
         self.func_map
             .get(&Name(name))
             .unwrap_or_else(|| panic!("Func {name} not found"))
@@ -544,7 +546,7 @@ impl<F: Field + Ord> CtrlE<F> {
                 let mut unique_branches = Vec::new();
                 for (fs, block) in cases.branches.iter() {
                     let state = ctx.save_state();
-                    let block = block.compile(ctx);
+                    let block = Arc::new(block.compile(ctx));
                     ctx.restore_state(state);
                     fs.iter().for_each(|f| vec.push((*f, block.clone())));
                     unique_branches.push(block);
@@ -559,7 +561,7 @@ impl<F: Field + Ord> CtrlE<F> {
                 let mut vec = Vec::with_capacity(cases.branches.len());
                 for (fs, block) in cases.branches.iter() {
                     let state = ctx.save_state();
-                    let block = block.compile(ctx);
+                    let block = Arc::new(block.compile(ctx));
                     ctx.restore_state(state);
                     vec.push((fs.clone(), block))
                 }
