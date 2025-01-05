@@ -1,7 +1,7 @@
 use p3_air::{Air, AirBuilder};
 use p3_field::Field;
 use p3_matrix::Matrix;
-use std::{borrow::Borrow, fmt::Debug};
+use std::{borrow::Borrow, fmt::Debug, sync::Arc};
 
 use crate::{
     air::builder::{LookupBuilder, ProvideRecord, RequireRecord},
@@ -514,7 +514,7 @@ impl<F: Field> Ctrl<F> {
                 let map_len = map.len();
                 let init_state = index.save();
 
-                let mut process = |block: &Block<F>| {
+                let mut process = |block: &Arc<Block<F>>| {
                     let sel = block.return_sel::<AB>(local);
                     block.eval(builder, local, &sel, index, map, toplevel, depth);
                     map.truncate(map_len);
@@ -597,7 +597,7 @@ mod tests {
                 None,
             )
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries);
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let factorial_trace = factorial_chip.generate_trace(shard);
@@ -608,7 +608,7 @@ mod tests {
         toplevel
             .execute_by_name("fib", &[F::from_canonical_usize(7)], &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries);
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let fib_trace = fib_chip.generate_trace(shard);
@@ -624,7 +624,7 @@ mod tests {
         toplevel
             .execute_by_name("fib", args, &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries);
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let fib_trace = fib_chip.generate_trace(shard);
@@ -665,7 +665,7 @@ mod tests {
         toplevel
             .execute_by_name("not", args, &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let not_trace = not_chip.generate_trace(shard);
@@ -716,7 +716,7 @@ mod tests {
         toplevel
             .execute_by_name("eq", args, &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let eq_trace = eq_chip.generate_trace(shard);
@@ -787,7 +787,7 @@ mod tests {
             .execute_by_name("if_many", args, &mut queries, None)
             .unwrap();
 
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let if_many_trace = if_many_chip.generate_trace(shard);
@@ -876,7 +876,7 @@ mod tests {
             .execute_by_name("match_many", args, &mut queries, None)
             .unwrap();
 
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let match_many_trace = match_many_chip.generate_trace(shard);
@@ -936,7 +936,7 @@ mod tests {
             .execute_by_name("assert", args, &mut queries, None)
             .unwrap();
         let chip = FuncChip::from_name("assert", &toplevel);
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let trace = chip.generate_trace(shard);
@@ -1004,7 +1004,7 @@ mod tests {
             .execute_by_name("test", args, &mut queries, None)
             .unwrap();
         let chip = FuncChip::from_name("test", &toplevel);
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let trace = chip.generate_trace(shard);
@@ -1059,7 +1059,7 @@ mod tests {
         toplevel
             .execute_by_name("range_test", args, &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries.clone());
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let trace = range_chip.generate_trace(shard);

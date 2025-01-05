@@ -419,6 +419,8 @@ impl<F: PrimeField32> Op<F> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::{
         air::debug::debug_chip_constraints_and_queries_with_sharding,
         func,
@@ -469,7 +471,7 @@ mod tests {
         toplevel
             .execute_by_name("factorial", args, &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries);
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let trace = factorial_chip.generate_trace(shard);
@@ -504,7 +506,7 @@ mod tests {
         toplevel
             .execute_by_name("fib", args, &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries);
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let trace = fib_chip.generate_trace(shard);
@@ -578,7 +580,7 @@ mod tests {
         toplevel
             .execute_by_name("test", args, &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries);
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let trace = test_chip.generate_trace(shard);
@@ -673,7 +675,7 @@ mod tests {
         toplevel
             .execute(test_func, three, &mut queries, None)
             .unwrap();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new(queries);
         assert_eq!(shards.len(), 1);
         let shard = &shards[0];
         let trace = test_chip.generate_trace(shard);
@@ -746,7 +748,8 @@ mod tests {
 
         let lair_chips = build_lair_chip_vector(&ack_chip);
 
-        let shards = Shard::new(&queries);
+        let queries = Arc::new(queries);
+        let shards = Shard::new_arc(&queries);
         assert!(
             shards.len() > 1,
             "lair_shard_test must have more than one shard"
@@ -770,7 +773,7 @@ mod tests {
         let mut challenger_p = machine.config().challenger();
         let mut challenger_v = machine.config().challenger();
         let mut challenger_d = machine.config().challenger();
-        let shards = Shard::new(&queries);
+        let shards = Shard::new_arc(&queries);
 
         machine.debug_constraints(&pk, shards.clone(), &mut challenger_d);
         let opts = SP1CoreOpts::default();

@@ -297,7 +297,7 @@ mod tests {
         let mut challenger_p = machine.config().challenger();
         let mut challenger_v = machine.config().challenger();
         let mut challenger_d = machine.config().challenger();
-        let shard = Shard::new(&queries);
+        let shard = Shard::new(queries.clone());
 
         machine.debug_constraints(&pk, shard.clone(), &mut challenger_d);
         let opts = SP1CoreOpts::default();

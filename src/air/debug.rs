@@ -11,6 +11,7 @@ use p3_matrix::Matrix;
 use sp1_stark::air::MachineAir;
 use sp1_stark::SP1CoreOpts;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 type LocalRowView<'a, F> = VerticalPair<RowMajorMatrixView<'a, F>, RowMajorMatrixView<'a, F>>;
 
@@ -121,14 +122,14 @@ pub fn debug_chip_constraints_and_queries_with_sharding<
     C1: Chipset<F>,
     C2: Chipset<F>,
 >(
-    record: &QueryRecord<F>,
+    record: &Arc<QueryRecord<F>>,
     chips: &[LairChip<F, C1, C2>],
     config: Option<SP1CoreOpts>,
 ) {
     let shards = if let Some(config) = config {
-        Shard::shard_with(record, &config)
+        Shard::shard_with_arc(record, &config)
     } else {
-        Shard::new(record)
+        Shard::new_arc(record)
     };
 
     let lookup_queries: Vec<_> = shards

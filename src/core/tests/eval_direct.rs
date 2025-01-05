@@ -1,5 +1,7 @@
 //! Correctness tests for the Lurk evaluation model
 
+use std::sync::Arc;
+
 use once_cell::sync::OnceCell;
 use p3_baby_bear::BabyBear as F;
 use p3_field::AbstractField;
@@ -22,13 +24,14 @@ use super::run_tests;
 
 #[allow(clippy::type_complexity)]
 static TEST_SETUP_DATA: OnceCell<(
-    Toplevel<F, LurkChip, NoChip>,
+    Arc<Toplevel<F, LurkChip, NoChip>>,
     ZStore<F, LurkChip>,
     BabyBearPoseidon2,
 )> = OnceCell::new();
 
+#[allow(clippy::type_complexity)]
 fn test_setup_data() -> &'static (
-    Toplevel<F, LurkChip, NoChip>,
+    Arc<Toplevel<F, LurkChip, NoChip>>,
     ZStore<F, LurkChip>,
     BabyBearPoseidon2,
 ) {

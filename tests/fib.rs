@@ -7,6 +7,7 @@ use p3_baby_bear::BabyBear;
 use p3_field::AbstractField;
 use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
 use sp1_stark::{CpuProver, MachineProver, SP1CoreOpts, StarkGenericConfig, StarkMachine};
+use std::sync::Arc;
 use std::time::Instant;
 
 use lurk::{
@@ -45,7 +46,7 @@ fn build_lurk_expr(arg: usize) -> String {
 
 fn setup<C: Chipset<BabyBear>>(
     arg: usize,
-    toplevel: &Toplevel<BabyBear, C, NoChip>,
+    toplevel: &Arc<Toplevel<BabyBear, C, NoChip>>,
 ) -> (
     List<BabyBear>,
     FuncChip<BabyBear, C, NoChip>,
@@ -89,7 +90,7 @@ fn fib_e2e() {
     let (pk, _) = machine.setup(&LairMachineProgram);
     let mut challenger_p = machine.config().challenger();
     let opts = SP1CoreOpts::default();
-    let shard = Shard::new(&record);
+    let shard = Shard::new(record);
     let prover = CpuProver::new(machine);
     let _machine_proof = prover
         .prove(&pk, shard, &mut challenger_p, opts)
