@@ -8,7 +8,7 @@
 
 Lurk is a statically scoped dialect of Lisp, influenced by Scheme and Common Lisp. A reference implementation focused on describing and developing the core language can be found in the [`lurk-lisp`](https://github.com/argumentcomputer/lurk-lisp) repo.
 
-Lurk's distinguishing feature relative to most programming languages is that correct execution of Lurk programs can be directly proved using SNARKs. The resulting proofs are succinct: they are relatively small, can be verified quickly, and they reveal only the information explicitly contained in the statement to be proved.
+Lurk's distinguishing feature relative to most programming languages is that the correct execution of Lurk programs can be directly proved using SNARKs. The resulting proofs are succinct: they are relatively small, can be verified quickly, and they reveal only the information explicitly contained in the statement to be proved.
 
 Lurk's distinguishing feature relative to most SNARK authoring languages is that Lurk is Turing complete, so arbitrary computational claims can be made and proved (subject to resource limitations, obviously). Because Lurk is a Lisp, its code is simply Lurk data, and any Lurk data can be directly evaluated as a Lurk program. Lurk constructs compound data using SNARK-friendly Poseidon hashes, so its data is naturally content-addressable.
 
