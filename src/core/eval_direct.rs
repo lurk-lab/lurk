@@ -29,7 +29,7 @@ use super::{
 fn native_lurk_funcs<F: PrimeField32>(
     digests: &SymbolsDigests<F>,
     coroutines: &FxIndexMap<Symbol, Coroutine<F>>,
-) -> [FuncE<F>; 39] {
+) -> [FuncE<F>; 40] {
     [
         lurk_main(),
         preallocate_symbols(digests),
@@ -37,6 +37,7 @@ fn native_lurk_funcs<F: PrimeField32>(
         eval_builtin_expr(digests),
         eval_bind_builtin(),
         eval_env_builtin(),
+        eval_env_literal(),
         eval_apply_builtin(),
         eval_coroutine_expr(digests, coroutines),
         eval_opening_unop(digests),
@@ -432,6 +433,10 @@ pub fn eval<F: AbstractField>() -> FuncE<F> {
                     // IMPORTANT: at this point this operation cannot return an error
                     let (_tag, ext_env) = call(extend_env_with_mutuals, binds_tag, binds, binds, mutual_env);
                     let (res_tag, res) = call(eval, body_tag, body, ext_env);
+                    return (res_tag, res)
+                }
+                Tag::Env => {
+                    let (res_tag, res) = call(eval_env_literal, expr, env);
                     return (res_tag, res)
                 }
             };
@@ -874,6 +879,44 @@ pub fn eval_env_builtin<F: AbstractField>() -> FuncE<F> {
                 }
             };
             let err = EvalErr::InvalidForm;
+            return (err_tag, err)
+        }
+    )
+}
+
+pub fn eval_env_literal<F: AbstractField>() -> FuncE<F> {
+    func!(
+        partial fn eval_env_literal(env_literal, env): [2] {
+            let env_tag = Tag::Env;
+            let err_tag = Tag::Err;
+            let nil_env = 0;
+            if !env_literal {
+                return (env_tag, nil_env)
+            }
+            let (sym_tag, sym, val_tag, val, rest) = load(env_literal);
+            match sym_tag {
+                Tag::Sym, Tag::Builtin, Tag::Coroutine => {
+                    let (val_tag, val) = call(eval, val_tag, val, env);
+                    match val_tag {
+                        Tag::Err => {
+                            return (val_tag, val)
+                        }
+                    };
+                    let (tail_env_tag, tail_env) = call(eval_env_literal, rest, env);
+                    match tail_env_tag {
+                        Tag::Env => {
+                            let env = store(sym_tag, sym, val_tag, val, tail_env);
+                            return (env_tag, env)
+                        }
+                        Tag::Err => {
+                            return (tail_env_tag, tail_env)
+                        }
+                    };
+                    let err = EvalErr::InvalidForm;
+                    return (err_tag, err)
+                }
+            };
+            let err = EvalErr::IllegalBindingVar;
             return (err_tag, err)
         }
     )
@@ -2025,7 +2068,7 @@ mod test {
         expect_eq(lurk_main.width(), expect!["97"]);
         expect_eq(preallocate_symbols.width(), expect!["188"]);
         expect_eq(eval_coroutine_expr.width(), expect!["10"]);
-        expect_eq(eval.width(), expect!["78"]);
+        expect_eq(eval.width(), expect!["79"]);
         expect_eq(eval_builtin_expr.width(), expect!["148"]);
         expect_eq(eval_bind_builtin.width(), expect!["110"]);
         expect_eq(eval_env_builtin.width(), expect!["81"]);

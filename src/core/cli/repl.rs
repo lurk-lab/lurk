@@ -16,7 +16,7 @@ use sphinx_core::{
     stark::{LocalProver, StarkGenericConfig},
     utils::SphinxCoreOpts,
 };
-use std::{fmt::Debug, io::Write, marker::PhantomData};
+use std::{fmt::Debug, io::Write, marker::PhantomData, sync::Arc};
 
 use crate::{
     core::{
@@ -521,6 +521,20 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             .collect()
     }
 
+    fn intern_syntax_env(
+        &mut self,
+        env: &[(Arc<Symbol>, Syntax<F>)],
+        file_dir: &Utf8Path,
+    ) -> Result<Vec<(ZPtr<F>, ZPtr<F>)>> {
+        env.iter()
+            .map(|(sym, val)| {
+                let sym = self.zstore.intern_symbol(sym, &self.lang_symbols);
+                let val = self.intern_syntax(val, file_dir)?;
+                Ok((sym, val))
+            })
+            .collect()
+    }
+
     fn intern_syntax(&mut self, syn: &Syntax<F>, file_dir: &Utf8Path) -> Result<ZPtr<F>> {
         let zptr = match syn {
             Syntax::Meta(_, sym, args) => {
@@ -552,6 +566,11 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             Syntax::Quote(_, x) => {
                 let x = self.intern_syntax(x, file_dir)?;
                 self.zstore.intern_list([*self.zstore.quote(), x])
+            }
+            Syntax::Env(_, env) => {
+                let zptrs = self.intern_syntax_env(env, file_dir)?;
+                let empty_env = self.zstore.intern_empty_env();
+                zptrs.into_iter().rev().fold(empty_env, |acc, (sym, val)| self.zstore.intern_env(sym, val, acc))
             }
         };
         Ok(zptr)
