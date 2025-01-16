@@ -367,6 +367,38 @@ test!(test_env_builtin3, "(env (list 'a 1 2))", |z| {
     let val = z.intern_list([one, two]);
     z.intern_env(a, val, empty_env)
 });
+test!(test_env_literal, "{ a: 1, b: 2 }", |z| {
+    let empty_env = z.intern_empty_env();
+    let b = z.intern_symbol_no_lang(&user_sym("b"));
+    let two = z.intern_u64(2);
+    let b_2 = z.intern_env(b, two, empty_env);
+    let a = z.intern_symbol_no_lang(&user_sym("a"));
+    let one = z.intern_u64(1);
+    z.intern_env(a, one, b_2)
+});
+test!(test_env_literal_empty, "{  }", |z| { z.intern_empty_env() });
+test!(test_env_literal_add, "{ a: (+ 1 0), b: 2 }", |z| {
+    let empty_env = z.intern_empty_env();
+    let b = z.intern_symbol_no_lang(&user_sym("b"));
+    let two = z.intern_u64(2);
+    let b_2 = z.intern_env(b, two, empty_env);
+    let a = z.intern_symbol_no_lang(&user_sym("a"));
+    let one = z.intern_u64(1);
+    z.intern_env(a, one, b_2)
+});
+test!(
+    test_eval_with_env_literal,
+    "(eval '(+ a 1) { a: 1 })",
+    |_| { uint(2) }
+);
+test!(
+    test_quote_env_literal,
+    "(eval 'a '{ a: (1 1), b: 2 })",
+    |z| { z.intern_list([uint(1), uint(1)]) }
+);
+test!(test_env_literal_err, "{ a: (1 1), b: 2 }", |_| {
+    ZPtr::err(EvalErr::ApplyNonFunc)
+});
 test!(
     test_bind_builtin,
     "(bind 'a (- 2 1) (current-env))",

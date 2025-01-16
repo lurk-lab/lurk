@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::{tag, take_till},
     character::complete::{anychar, char, multispace0, multispace1, none_of},
     combinator::{eof, opt, peek, success, value},
-    multi::{many0, many_till, separated_list1},
+    multi::{many0, many_till, separated_list0, separated_list1},
     sequence::{delimited, preceded, terminated},
     Parser,
 };
@@ -449,6 +449,39 @@ fn parse_char_or_quote<F: Field>(
     }
 }
 
+fn parse_env_pair<F: Field>(
+    state: StateRcCell,
+    create_unknown_packages: bool,
+) -> impl Fn(Span<'_>) -> ParseResult<'_, (SymbolRef, Syntax<F>)> {
+    move |i: Span<'_>| {
+        let (i, _) = parse_space(i)?;
+        let (i, key) = parse_symbol(state.clone(), create_unknown_packages)(i)?;
+        let (i, _) = parse_space(i)?;
+        let (i, _) = tag(":")(i)?;
+        let (i, _) = parse_space(i)?;
+        let (i, value) = parse_syntax(state.clone(), create_unknown_packages)(i)?;
+        let (i, _) = parse_space(i)?;
+        Ok((i, (key, value)))
+    }
+}
+
+fn parse_env<F: Field>(
+    state: StateRcCell,
+    create_unknown_packages: bool,
+) -> impl Fn(Span<'_>) -> ParseResult<'_, Syntax<F>> {
+    move |from: Span<'_>| {
+        let (i, _) = tag("{")(from)?;
+        let (i, _) = parse_space(i)?;
+        let (i, pairs) = separated_list0(
+            tag(","),
+            parse_env_pair(state.clone(), create_unknown_packages),
+        )(i)?;
+        let (upto, _) = tag("}")(i)?;
+        let pos = Pos::from_upto(from, upto);
+        Ok((upto, Syntax::Env(pos, pairs)))
+    }
+}
+
 fn parse_syntax<F: Field>(
     state: StateRcCell,
     create_unknown_packages: bool,
@@ -464,6 +497,7 @@ fn parse_syntax<F: Field>(
             parse_string(),
             parse_char_or_quote(state.clone(), create_unknown_packages),
             parse_hash_char(),
+            parse_env(state.clone(), create_unknown_packages),
         ))(from)
     }
 }
