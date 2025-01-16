@@ -2068,7 +2068,7 @@ mod test {
         expect_eq(lurk_main.width(), expect!["97"]);
         expect_eq(preallocate_symbols.width(), expect!["188"]);
         expect_eq(eval_coroutine_expr.width(), expect!["10"]);
-        expect_eq(eval.width(), expect!["78"]);
+        expect_eq(eval.width(), expect!["79"]);
         expect_eq(eval_builtin_expr.width(), expect!["148"]);
         expect_eq(eval_bind_builtin.width(), expect!["110"]);
         expect_eq(eval_env_builtin.width(), expect!["81"]);
