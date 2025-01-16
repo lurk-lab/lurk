@@ -541,6 +541,20 @@ impl<F: Field, C: Chipset<F>> ZStore<F, C> {
                 let x = self.intern_syntax(x, lang_symbols);
                 self.intern_list([self.quote, x])
             }
+            Syntax::Env(_, env) => {
+                let xs = env
+                    .iter()
+                    .map(|(sym, val)| {
+                        let sym = self.intern_symbol(sym, lang_symbols);
+                        let val = self.intern_syntax(val, lang_symbols);
+                        (sym, val)
+                    })
+                    .collect::<Vec<_>>();
+                let empty_env = self.intern_empty_env();
+                xs.into_iter()
+                    .rev()
+                    .fold(empty_env, |acc, (sym, val)| self.intern_env(sym, val, acc))
+            }
             Syntax::I64(..) | Syntax::Meta(..) => panic!("not supported"),
         };
         self.syn_cache.insert(syn.clone(), zptr);
@@ -866,13 +880,13 @@ impl<F: Field, C: Chipset<F>> ZStore<F, C> {
                     .iter()
                     .map(|(sym, val)| {
                         format!(
-                            "({} . {})",
+                            "{}: {}",
                             self.fmt_with_state(state, sym),
                             self.fmt_with_state(state, val)
                         )
                     })
-                    .join(" ");
-                format!("<Env ({})>", pairs_str)
+                    .join(", ");
+                format!("{{ {} }}", pairs_str)
             }
             Tag::Fix => {
                 let (body, ..) = self.fetch_tuple110(zptr);
@@ -1044,8 +1058,8 @@ mod test {
         let fun = zstore.intern_fun(list_x, list_x, empty_env);
         assert_eq!(zstore.fmt_with_state(state, &fun), "<Fun (x) (x)>");
 
-        assert_eq!(zstore.fmt_with_state(state, &empty_env), "<Env ()>");
+        assert_eq!(zstore.fmt_with_state(state, &empty_env), "{  }");
         let env = zstore.intern_env(x, one, empty_env);
-        assert_eq!(zstore.fmt_with_state(state, &env), "<Env ((x . 1n))>");
+        assert_eq!(zstore.fmt_with_state(state, &env), "{ x: 1n }");
     }
 }

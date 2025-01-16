@@ -33,6 +33,8 @@ pub enum Syntax<F> {
     Improper(Pos, Vec<Syntax<F>>, Box<Syntax<F>>),
     /// A meta command: !(foo 1 'a')
     Meta(Pos, SymbolRef, Vec<Syntax<F>>),
+    /// An environment literal: { a: 1, b: "hello" }
+    Env(Pos, Vec<(SymbolRef, Syntax<F>)>),
 }
 
 impl<F> Syntax<F> {
@@ -50,7 +52,8 @@ impl<F> Syntax<F> {
             | Self::Quote(pos, _)
             | Self::List(pos, _)
             | Self::Improper(pos, ..)
-            | Self::Meta(pos, ..) => pos,
+            | Self::Meta(pos, ..)
+            | Self::Env(pos, ..) => pos,
         }
     }
 }
@@ -101,6 +104,17 @@ impl<F: fmt::Display + PrimeField> fmt::Display for Syntax<F> {
                     write!(f, " {x}")?;
                 }
                 write!(f, ")")
+            }
+            Self::Env(_, env) => {
+                let mut iter = env.iter().peekable();
+                write!(f, "{{ ")?;
+                while let Some((sym, val)) = iter.next() {
+                    match iter.peek() {
+                        Some(_) => write!(f, "{sym}: {val}, ")?,
+                        None => write!(f, "{sym}: {val}")?,
+                    }
+                }
+                write!(f, " }}")
             }
         }
     }
