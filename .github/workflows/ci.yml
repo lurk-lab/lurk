@@ -10,13 +10,8 @@ concurrency:
 
 jobs:
   test:
-    runs-on: warp-ubuntu-latest-x64-16x
+    runs-on: ubuntu-latest
     steps:
-      - name: Set up git private repo access
-        run: |
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com".insteadOf https://github.com
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" | tee -a $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           repository: argumentcomputer/ci-workflows
@@ -27,6 +22,26 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@wasm-pack
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 23
+      - uses: actions/checkout@v4
+        with:
+          repository: lurk-lab/lurkscript
+          path: lurkscript
+          ref: 'remove-set-panic-hook'
+          token: ${{ secrets.REPO_TOKEN }}
+      - name: Install Lurkscript
+        run: |
+          mkdir .ci-bin
+          cd .ci-bin
+          pnpm config set global-bin-dir "$(pwd)"
+          echo "$(pwd)" >> $GITHUB_PATH
+          cd ../lurkscript
+          pnpm install
+          pnpm -r build
+          pnpm install-cli
       - uses: Swatinem/rust-cache@v2
       - name: Linux Tests
         run: |
@@ -35,11 +50,6 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - name: Set up git private repo access
-        run: |
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com".insteadOf https://github.com
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" | tee -a $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           repository: argumentcomputer/ci-workflows
@@ -61,13 +71,8 @@ jobs:
       #   uses: EmbarkStudios/cargo-deny-action@v1
   
   bench-regression:
-    runs-on: warp-ubuntu-latest-x64-32x
+    runs-on: ubuntu-latest
     steps:
-      - name: Set up git private repo access
-        run: |
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com".insteadOf https://github.com
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" | tee -a $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           repository: argumentcomputer/ci-workflows

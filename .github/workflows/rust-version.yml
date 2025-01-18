@@ -36,7 +36,7 @@ jobs:
           title: "chore: Update Rust version to `nightly-${{ steps.rust-version.outputs.new-version }}`"
           commit-message: "chore: Update Rust version to `nightly-${{ steps.rust-version.outputs.new-version }}`"
           labels: "automated-issue"
-          reviewers: "arthurpaulino, wwared, huitseeker, samuelburnham"
+          reviewers: "wwared, porcuquine, winston-h-zhang"
           body: |
             This is an automated PR updating the Rust version from `nightly-${{ steps.rust-version.outputs.old-version }}` to `nightly-${{ steps.rust-version.outputs.new-version }}`
 
