@@ -73,9 +73,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F> for LairChip
             Self::Func(func_chip) => format!("Func[{}]", func_chip.func.name),
             Self::Mem(mem_chip) => format!("Mem[{}-wide]", mem_chip.len),
             Self::Entrypoint { func_idx, .. } => format!("Entrypoint[{func_idx}]"),
-            // the following is required by sphinx
-            // TODO: engineer our way out of such upstream check
-            Self::Bytes(_bytes_chip) => "CPU".to_string(),
+            Self::Bytes(_bytes_chip) => "Bytes".to_string(),
             Self::Dummy => "Dummy".to_string(),
         }
     }
