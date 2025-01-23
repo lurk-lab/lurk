@@ -36,6 +36,8 @@ fn run_tests<C2: Chipset<F>>(
     expected_cloj: fn(&mut ZStore<F, LurkChip>) -> ZPtr<F>,
     config: BabyBearPoseidon2,
 ) {
+    sp1_core_machine::utils::setup_logger();
+
     let mut record = QueryRecord::new(toplevel);
     let hashes3 = std::mem::take(&mut zstore.hashes3_diff);
     let hashes4 = std::mem::take(&mut zstore.hashes4_diff);
@@ -69,7 +71,7 @@ fn run_tests<C2: Chipset<F>>(
         }),
     );
 
-    // debug constraints with Sphinx
+    // debug constraints with SP1
     let full_shard = Shard::new_arc(&record);
     let machine = StarkMachine::new(
         config,
