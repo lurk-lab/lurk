@@ -3,7 +3,7 @@ use crate::gadgets::unsigned::Word;
 use num_traits::{ToBytes, Unsigned};
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, PrimeField};
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::array;
 use std::iter::zip;
 

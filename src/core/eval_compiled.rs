@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, PrimeField32};
 use rustc_hash::FxHashSet;
@@ -87,10 +89,11 @@ fn native_lurk_funcs<F: PrimeField32>(
 /// Creates a `Toplevel` with the functions used for Lurk evaluation, also returning
 /// a `ZStore` with the Lurk builtins already interned.
 #[inline]
+#[allow(clippy::type_complexity)]
 pub fn build_lurk_toplevel<C2: Chipset<BabyBear>>(
     lang: Lang<BabyBear, C2>,
 ) -> (
-    Toplevel<BabyBear, LurkChip, C2>,
+    Arc<Toplevel<BabyBear, LurkChip, C2>>,
     ZStore<BabyBear, LurkChip>,
     FxHashSet<Symbol>,
 ) {
@@ -118,8 +121,9 @@ pub fn build_lurk_toplevel<C2: Chipset<BabyBear>>(
 }
 
 #[inline]
+#[allow(clippy::type_complexity)]
 pub fn build_lurk_toplevel_native() -> (
-    Toplevel<BabyBear, LurkChip, NoChip>,
+    Arc<Toplevel<BabyBear, LurkChip, NoChip>>,
     ZStore<BabyBear, LurkChip>,
     FxHashSet<Symbol>,
 ) {

@@ -6,7 +6,7 @@ use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use rand::distributions::{Distribution, Standard, Uniform};
 use rand::{Rng, SeedableRng};
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::borrow::{Borrow, BorrowMut};
 
 const QUERY_WIDTH: usize = 8;

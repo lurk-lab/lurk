@@ -10,13 +10,8 @@ concurrency:
 
 jobs:
   test:
-    runs-on: warp-ubuntu-latest-x64-16x
+    runs-on: ubuntu-latest
     steps:
-      - name: Set up git private repo access
-        run: |
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com".insteadOf https://github.com
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" | tee -a $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           repository: argumentcomputer/ci-workflows
@@ -35,11 +30,6 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - name: Set up git private repo access
-        run: |
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com".insteadOf https://github.com
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" | tee -a $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           repository: argumentcomputer/ci-workflows
@@ -61,13 +51,8 @@ jobs:
       #   uses: EmbarkStudios/cargo-deny-action@v1
   
   bench-regression:
-    runs-on: warp-ubuntu-latest-x64-32x
+    runs-on: ubuntu-latest
     steps:
-      - name: Set up git private repo access
-        run: |
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.REPO_TOKEN }}@github.com".insteadOf https://github.com
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" | tee -a $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           repository: argumentcomputer/ci-workflows
@@ -150,10 +135,16 @@ jobs:
             ${{ steps.regression-check.outputs.slow-tests }}
 
             [Workflow URL](${{ env.WORKFLOW_URL }})
+      - uses: tibdex/github-app-token@v2
+        if: steps.regression-check.outputs.regression == 'true' && github.event_name == 'merge_group'
+        id: generate-token
+        with:
+          app_id: ${{ secrets.TOKEN_APP_ID }}
+          private_key: ${{ secrets.TOKEN_APP_PRIVATE_KEY }}
       - uses: JasonEtco/create-an-issue@v2
         if: steps.regression-check.outputs.regression == 'true' && github.event_name == 'merge_group'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           WORKFLOW_URL: ${{ env.WORKFLOW_URL }}
           SLOW_TESTS: ${{ steps.regression-check.outputs.slow-tests }}
         with:

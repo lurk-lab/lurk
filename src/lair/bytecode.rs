@@ -4,6 +4,8 @@
 //! References are index-based, thought of as positions in a stack from a stack
 //! machine.
 
+use std::sync::Arc;
+
 use super::{map::Map, List, Name};
 
 /// The type for Lair operations
@@ -72,7 +74,7 @@ pub struct Block<F> {
 pub enum Ctrl<F> {
     /// `Choose(x, cases)` non-deterministically chooses which case to execute based on a value `x`
     /// The third item is the list of unique branches, needed for `eval`
-    Choose(usize, Cases<F, F>, List<Block<F>>), // TODO use Arc or indices so that blocks are not duplicated
+    Choose(usize, Cases<F, F>, List<Arc<Block<F>>>),
     /// `ChooseMany(x, cases)` non-deterministically chooses which case to execute based on an array `x`
     ChooseMany(List<usize>, Cases<List<F>, F>),
     /// Contains the variables whose bindings will construct the output of the
@@ -86,24 +88,24 @@ pub enum Ctrl<F> {
 /// is encoded as its own block
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Cases<K, F> {
-    pub(crate) branches: Map<K, Block<F>>,
-    pub(crate) default: Option<Box<Block<F>>>,
+    pub(crate) branches: Map<K, Arc<Block<F>>>,
+    pub(crate) default: Option<Arc<Block<F>>>,
 }
 
 impl<K: Ord, F> Cases<K, F> {
     /// Returns the block mapped from key `f`
     #[inline]
-    pub fn match_case(&self, k: &K) -> Option<&Block<F>> {
-        self.branches.get(k).or(self.default.as_deref())
+    pub fn match_case(&self, k: &K) -> Option<&Arc<Block<F>>> {
+        self.branches.get(k).or(self.default.as_ref())
     }
 
     /// Returns the block at a given index
     #[inline]
-    pub fn get_index(&self, idx: usize) -> Option<&Block<F>> {
+    pub fn get_index(&self, idx: usize) -> Option<&Arc<Block<F>>> {
         self.branches
             .get_index(idx)
             .map(|(_, b)| b)
-            .or(self.default.as_deref())
+            .or(self.default.as_ref())
     }
 
     /// Returns the block index given its respective matching key. If there's no

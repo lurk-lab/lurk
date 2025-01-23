@@ -9,7 +9,7 @@ use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::*;
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::borrow::{Borrow, BorrowMut};
 use std::collections::BTreeMap;
 

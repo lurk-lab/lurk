@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use p3_baby_bear::BabyBear;
@@ -1101,7 +1103,7 @@ pub fn compile_funcs<F: PrimeField32>(digests: &SymbolsDigests<F>) -> Vec<FuncE<
     ]
 }
 
-pub fn build_compile_toplevel_native() -> Toplevel<BabyBear, NoChip, NoChip> {
+pub fn build_compile_toplevel_native() -> Arc<Toplevel<BabyBear, NoChip, NoChip>> {
     use super::zstore::lurk_zstore;
 
     let mut zstore = lurk_zstore();

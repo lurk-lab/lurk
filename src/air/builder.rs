@@ -1,9 +1,9 @@
 use itertools::chain;
 use p3_air::{AirBuilder, AirBuilderWithPublicValues};
 use p3_field::{AbstractField, PrimeField};
-use sphinx_core::air::{AirInteraction, MessageBuilder};
-use sphinx_core::lookup::InteractionKind;
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
+use sp1_stark::air::{AirInteraction, InteractionScope, MessageBuilder};
+use sp1_stark::InteractionKind;
 
 /// Tagged tuple describing an element of a relation
 ///
@@ -117,6 +117,7 @@ impl<AB: AirBuilder + MessageBuilder<AirInteraction<AB::Expr>>> LookupBuilder fo
                 multiplicity: is_real_bool.into(),
                 kind: InteractionKind::Memory,
             },
+            InteractionScope::Global,
         )
     }
 
@@ -128,6 +129,7 @@ impl<AB: AirBuilder + MessageBuilder<AirInteraction<AB::Expr>>> LookupBuilder fo
                 multiplicity: is_real_bool.into(),
                 kind: InteractionKind::Memory,
             },
+            InteractionScope::Global,
         )
     }
 }

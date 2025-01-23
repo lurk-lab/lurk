@@ -5,7 +5,7 @@ use num_traits::ops::overflowing::{OverflowingAdd, OverflowingSub};
 use num_traits::{ToBytes, Unsigned};
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::array;
 use std::marker::PhantomData;
 

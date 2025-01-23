@@ -8,7 +8,7 @@ use p3_field::{AbstractField, Field, PrimeField32};
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 use std::borrow::{Borrow, BorrowMut};
 use std::marker::PhantomData;
 use std::mem::size_of;
