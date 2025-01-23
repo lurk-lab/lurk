@@ -10,7 +10,7 @@ use p3_field::{AbstractField, PrimeField32};
 /// When evaluating the Air constraints, we simply log all the requested byte relations
 /// in this struct.
 ///
-/// Note that in the context of Sphinx, this structure will only be used when initializing the
+/// Note that in the context of SP1, this structure will only be used when initializing the
 /// prover, since the constraints will first be evaluated by the `SymbolicAirBuilder` to gather
 /// all the lookup interactions. During proving and specifically quotient evaluation,
 /// the Air constraints should run using `ByteAirRecord` where all operations are no-ops.

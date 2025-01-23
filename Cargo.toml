@@ -181,7 +181,7 @@ loam=[]
 opt-level = 3
 
 [patch.crates-io]
-p3-poseidon2 = { git = "https://github.com/wwared/Plonky3.git", branch = "sp1-v4" }
+p3-poseidon2 = { git = "https://github.com/lurk-lab/p3.git", branch = "poseidon2-patch" }
 
 # p3-air = { path = "../Plonky3/air" }
 # p3-field = { path = "../Plonky3/field"}
