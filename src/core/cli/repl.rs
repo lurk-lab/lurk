@@ -16,7 +16,7 @@ use sphinx_core::{
     stark::{LocalProver, StarkGenericConfig},
     utils::SphinxCoreOpts,
 };
-use std::{fmt::Debug, io::Write, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, fs, io::Write, marker::PhantomData, process::Command, sync::Arc};
 
 use crate::{
     core::{
@@ -639,15 +639,36 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
     }
 
     pub(crate) fn load_file(&mut self, file_path: &Utf8Path, demo: bool) -> Result<()> {
-        let input = std::fs::read_to_string(file_path)?;
         let Some(file_dir) = file_path.parent() else {
             bail!("Can't get the parent of {file_path}");
         };
+
+        let input = if file_path.extension().map_or(false, |ext| ext == "ls") {
+            // Compile LurkScript (.ls) to Lurk using `lurkscript -c <filename>`
+            let output = Command::new("lurkscript")
+                .arg("-c")
+                .arg(file_path.as_os_str()) // Use absolute path
+                .output()?;
+
+            if !output.status.success() {
+                bail!(
+                    "LurkScript transpilation failed for {file_path}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+
+            String::from_utf8(output.stdout)?
+        } else {
+            // Read file as normal if it's not .ls
+            fs::read_to_string(file_path)?
+        };
+
         if demo {
             println!("Loading {file_path} in demo mode");
         } else {
             println!("Loading {file_path}");
         }
+
         let mut input = Span::new(&input);
         loop {
             match self.handle_form(input, file_dir, demo) {
