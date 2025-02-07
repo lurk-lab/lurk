@@ -180,7 +180,7 @@ impl<C1: Chipset<BabyBear>, C2: Chipset<BabyBear>> Repl<BabyBear, C1, C2> {
         let must_prove = if !proof_path.exists() {
             true
         } else {
-            let cached_proof_bytes = std::fs::read(&proof_path)?;
+            let cached_proof_bytes = fs::read(&proof_path)?;
             if let Ok(cached_proof) = bincode::deserialize::<CachedProof>(&cached_proof_bytes) {
                 let machine_proof = cached_proof.into_machine_proof();
                 let challenger_v = &mut challenger_p.clone();
@@ -202,7 +202,7 @@ impl<C1: Chipset<BabyBear>, C2: Chipset<BabyBear>> Repl<BabyBear, C1, C2> {
             let crypto_proof: CryptoProof = machine_proof.into();
             let cached_proof = CachedProof::new(crypto_proof, public_values, &self.zstore);
             let cached_proof_bytes = bincode::serialize(&cached_proof)?;
-            std::fs::write(proof_path, cached_proof_bytes)?;
+            fs::write(proof_path, cached_proof_bytes)?;
         }
         println!("Proof key: \"{proof_key}\"");
         Ok(proof_key)
@@ -622,9 +622,9 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             } else {
                 print!("{potential_commentaries}{prompt_marker}{actual_syntax}");
             }
-            std::io::stdout().flush()?;
+            io::stdout().flush()?;
             // wait for ENTER to be pressed
-            std::io::stdin().read_line(&mut String::new())?;
+            io::stdin().read_line(&mut String::new())?;
             // ENTER already prints a new line so we can remove it from the start of incoming input
             new_input = new_input.trim_start_matches('\n').into();
         }
@@ -716,7 +716,6 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
 
                     if self.lurkscript {
                         let mut buffer = line + "\n"; // Accumulate multi-line input
-                        let mut first_line = true; // Track first prompt use
 
                         loop {
                             // Try processing accumulated LurkScript input
@@ -731,7 +730,6 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
                                 break; // Proceed to processing
                             } else {
                                 // Assume error = incomplete input, continue reading
-                                first_line = false;
 
                                 // Read another line *without* displaying a new prompt
                                 print!("  "); // Minimal indent for clarity

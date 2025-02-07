@@ -6,11 +6,11 @@ use crate::core::cli::{
 #[test]
 fn test_meta_commands() {
     set_config_if_unset(Config::default());
-    let mut repl = Repl::new_native();
+    let mut repl = Repl::new_native(false);
     assert!(repl
         .load_file("src/core/cli/tests/first.lurk".into(), false)
         .is_ok());
-    let mut repl = Repl::new_native();
+    let mut repl = Repl::new_native(false);
     assert!(repl
         .load_file("src/core/cli/tests/second.lurk".into(), false)
         .is_ok());
@@ -21,11 +21,11 @@ fn test_meta_commands() {
 #[test]
 fn test_meta_commands_with_proofs() {
     set_config_if_unset(Config::default());
-    let mut repl = Repl::new_native();
+    let mut repl = Repl::new_native(false);
     assert!(repl
         .load_file("src/core/cli/tests/prove.lurk".into(), false)
         .is_ok());
-    let mut repl = Repl::new_native();
+    let mut repl = Repl::new_native(false);
     assert!(repl
         .load_file("src/core/cli/tests/verify.lurk".into(), false)
         .is_ok());
@@ -36,7 +36,7 @@ fn test_meta_commands_with_proofs() {
 #[test]
 fn test_lib() {
     set_config_if_unset(Config::default());
-    let mut repl = Repl::new_native();
+    let mut repl = Repl::new_native(false);
     assert!(repl.load_file("lib/tests.lurk".into(), false).is_ok());
 }
 
@@ -55,7 +55,7 @@ fn test_demo_files() {
         "demo/microbank.lurk",
     ];
     for file in demo_files {
-        let mut repl = Repl::new_native();
+        let mut repl = Repl::new_native(false);
         assert!(repl.load_file(file.into(), false).is_ok());
     }
     std::fs::remove_file("protocol-proof").unwrap();
