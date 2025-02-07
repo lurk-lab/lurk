@@ -16,7 +16,7 @@ use sphinx_core::{
     stark::{LocalProver, StarkGenericConfig},
     utils::SphinxCoreOpts,
 };
-use std::{fmt::Debug, fs, io::Write, marker::PhantomData, process::Command, sync::Arc};
+use std::{fmt::Debug, fs, io, io::Write, marker::PhantomData, process::Command, sync::Arc};
 
 use crate::{
     core::{
@@ -714,14 +714,37 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
                 Ok(mut line) => {
                     editor.add_history_entry(&line)?;
 
+                    if self.lurkscript {
+                        let mut buffer = line + "\n"; // Accumulate multi-line input
+                        let mut first_line = true; // Track first prompt use
+
+                        loop {
+                            // Try processing accumulated LurkScript input
+                            let output = Command::new("lurkscript")
+                                .arg("-ce")
+                                .arg(&buffer)
+                                .output()?;
+
+                            if output.status.success() {
+                                // Successfully compiled LurkScript, replace buffer with the output
+                                line = String::from_utf8(output.stdout)?;
+                                break; // Proceed to processing
+                            } else {
+                                // Assume error = incomplete input, continue reading
+                                first_line = false;
+
+                                // Read another line *without* displaying a new prompt
+                                print!("  "); // Minimal indent for clarity
+                                io::stdout().flush()?; // Ensure indentation appears before input
+
+                                let mut extra_line = String::new();
+                                io::stdin().read_line(&mut extra_line)?;
+                                buffer.push_str(&extra_line);
+                            }
+                        }
+                    }
+
                     while !line.trim_end().is_empty() {
-                        if self.lurkscript {
-                            let output =
-                                Command::new("lurkscript").arg("-ce").arg(line).output()?;
-
-                            line = String::from_utf8(output.stdout)?;
-                        };
-
                         match self.process(Span::new(&line), &pwd_path) {
                             Ok(Some((_, rest, zptr, meta))) => {
                                 if meta {
