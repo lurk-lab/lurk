@@ -130,10 +130,11 @@ pub(crate) struct Repl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
     pub(crate) state: StateRcCell,
     pub(crate) meta_cmds: MetaCmdsMap<F, C1, C2>,
     pub(crate) lang_symbols: FxHashSet<Symbol>,
+    pub(crate) lurkscript: bool,
 }
 
 impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
-    pub(crate) fn new(lang: Lang<BabyBear, C2>) -> Self {
+    pub(crate) fn new(lang: Lang<BabyBear, C2>, lurkscript: bool) -> Self {
         let (toplevel, mut zstore, lang_symbols) = build_lurk_toplevel(lang);
         let func_indices = FuncIndices::new(&toplevel);
         let env = zstore.intern_empty_env();
@@ -146,6 +147,7 @@ impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
             state: State::init_lurk_state().rccell(),
             meta_cmds: meta_cmds(),
             lang_symbols,
+            lurkscript,
         }
     }
 }
@@ -153,8 +155,8 @@ impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
 impl Repl<BabyBear, LurkChip, NoChip> {
     /// Creates a REPL instance for the empty Lang with `C2 = NoChip`
     #[inline]
-    pub(crate) fn new_native() -> Self {
-        Self::new(Lang::empty())
+    pub(crate) fn new_native(lurkscript: bool) -> Self {
+        Self::new(Lang::empty(), lurkscript)
     }
 }
 
@@ -713,6 +715,13 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
                     editor.add_history_entry(&line)?;
 
                     while !line.trim_end().is_empty() {
+                        if self.lurkscript {
+                            let output =
+                                Command::new("lurkscript").arg("-ce").arg(line).output()?;
+
+                            line = String::from_utf8(output.stdout)?;
+                        };
+
                         match self.process(Span::new(&line), &pwd_path) {
                             Ok(Some((_, rest, zptr, meta))) => {
                                 if meta {
