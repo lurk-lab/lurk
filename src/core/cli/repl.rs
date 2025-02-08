@@ -702,7 +702,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             _marker: Default::default(),
         }));
 
-        let repl_history = &repl_history()?;
+        let repl_history = &repl_history(self.lurkscript)?;
         if repl_history.exists() {
             editor.load_history(repl_history)?;
         }
