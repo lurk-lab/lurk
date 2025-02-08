@@ -86,7 +86,7 @@ impl<F: Field> InputValidator<F> {
             .arg("-ce")
             .arg(input)
             .output()
-            .map_err(|_| ())?;
+            .map_err(|_err| ())?;
 
         if output.status.success() {
             // Successfully compiled LurkScript
