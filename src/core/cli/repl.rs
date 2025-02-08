@@ -51,12 +51,13 @@ use crate::{
 
 #[derive(Helper, Highlighter, Hinter, Completer)]
 struct InputValidator<F: Field> {
+    lurkscript: bool,
     state: StateRcCell,
     _marker: PhantomData<F>,
 }
 
 impl<F: Field> InputValidator<F> {
-    fn try_parse(&self, input: &str) -> Result<(), Error> {
+    fn try_parse_lurk(&self, input: &str) -> Result<(), Error> {
         let mut input = Span::new(input);
         loop {
             match delimited(
@@ -78,12 +79,37 @@ impl<F: Field> InputValidator<F> {
             }
         }
     }
+
+    fn try_parse_lurkscript(&self, input: &str) -> Result<(), ()> {
+        // Try processing LurkScript input
+        let output = Command::new("lurkscript")
+            .arg("-ce")
+            .arg(input)
+            .output()
+            .map_err(|_| ())?;
+
+        if output.status.success() {
+            // Successfully compiled LurkScript
+            Ok(())
+        } else {
+            // TODO: Properly represent and handle possible Lurkscript errors
+            Err(())
+        }
+    }
+
+    fn can_parse(&self, input: &str) -> bool {
+        if self.lurkscript {
+            self.try_parse_lurkscript(input).is_ok()
+        } else {
+            self.try_parse_lurk(input).is_ok()
+        }
+    }
 }
 
 impl<F: Field + Debug> Validator for InputValidator<F> {
     fn validate(&self, ctx: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
         let input = ctx.input();
-        if input.ends_with("\n\n") || self.try_parse(input).is_ok() {
+        if input.ends_with("\n\n") || self.can_parse(input) {
             // user has pressed enter a lot of times so there is probably a syntax
             // error and we should just send it to the repl
             Ok(ValidationResult::Valid(None))
@@ -698,6 +724,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         let mut editor: Editor<InputValidator<F>, DefaultHistory> = Editor::with_config(config)?;
 
         editor.set_helper(Some(InputValidator::<F> {
+            lurkscript: self.lurkscript,
             state: self.state.clone(),
             _marker: Default::default(),
         }));
@@ -715,30 +742,16 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
                     editor.add_history_entry(&line)?;
 
                     if self.lurkscript {
-                        let mut buffer = line + "\n"; // Accumulate multi-line input
+                        // Process LurkScript input
+                        let output = Command::new("lurkscript").arg("-ce").arg(&line).output()?;
 
-                        loop {
-                            // Try processing accumulated LurkScript input
-                            let output = Command::new("lurkscript")
-                                .arg("-ce")
-                                .arg(&buffer)
-                                .output()?;
-
-                            if output.status.success() {
-                                // Successfully compiled LurkScript, replace buffer with the output
-                                line = String::from_utf8(output.stdout)?;
-                                break; // Proceed to processing
-                            } else {
-                                // Assume error = incomplete input, continue reading
-
-                                // Read another line *without* displaying a new prompt
-                                print!("  "); // Minimal indent for clarity
-                                io::stdout().flush()?; // Ensure indentation appears before input
-
-                                let mut extra_line = String::new();
-                                io::stdin().read_line(&mut extra_line)?;
-                                buffer.push_str(&extra_line);
-                            }
+                        if output.status.success() {
+                            // Successfully compiled LurkScript, replace buffer with the output
+                            line = String::from_utf8(output.stdout)?;
+                        } else {
+                            // Print out raw error for now
+                            eprintln!("Error: {}", String::from_utf8(output.stderr)?);
+                            continue;
                         }
                     }
 
