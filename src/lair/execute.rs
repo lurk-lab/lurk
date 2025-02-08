@@ -121,6 +121,13 @@ impl<F: PrimeField32> Shard<F> {
 
         let remainder = max_num_rows % shard_size;
         let num_shards = max_num_rows / shard_size + if remainder > 0 { 1 } else { 0 };
+
+        // TODO(#437): Proofs with >1 shard need a workaround
+        assert!(
+            num_shards == 1,
+            "Proofs of long computations are temporarily broken"
+        );
+
         let mut shards = Vec::with_capacity(num_shards);
         for shard_index in 0..num_shards {
             shards.push(Shard {

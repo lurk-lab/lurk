@@ -117,8 +117,8 @@ impl<AB: AirBuilder + MessageBuilder<AirInteraction<AB::Expr>>> LookupBuilder fo
                 multiplicity: is_real_bool.into(),
                 kind: InteractionKind::Memory,
             },
-            InteractionScope::Global,
-        )
+            InteractionScope::Local,
+        );
     }
 
     fn send(&mut self, relation: impl Relation<Self::Expr>, is_real_bool: impl Into<Self::Expr>) {
@@ -129,8 +129,8 @@ impl<AB: AirBuilder + MessageBuilder<AirInteraction<AB::Expr>>> LookupBuilder fo
                 multiplicity: is_real_bool.into(),
                 kind: InteractionKind::Memory,
             },
-            InteractionScope::Global,
-        )
+            InteractionScope::Local,
+        );
     }
 }
 

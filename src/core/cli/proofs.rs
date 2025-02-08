@@ -4,7 +4,7 @@ use p3_field::{AbstractField, PrimeField32};
 use serde::{Deserialize, Serialize};
 use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
 use sp1_stark::{
-    Challenge, Com, MachineProof, OpeningProof, ShardCommitment, ShardOpenedValues, ShardProof,
+    Challenge, Com, MachineProof, OpeningProof, ShardCommitment, ShardOpenedValues, ShardProof, Val,
 };
 
 use crate::{
@@ -17,10 +17,11 @@ use crate::{
 
 use super::{lurk_data::LurkData, microchain::CallableData, zdag::ZDag};
 
+// TODO: replace this with SP1's ShardProof type directly?
 #[derive(Serialize, Deserialize)]
 struct CryptoShardProof {
     commitment: ShardCommitment<Com<BabyBearPoseidon2>>,
-    opened_values: ShardOpenedValues<Challenge<BabyBearPoseidon2>>,
+    opened_values: ShardOpenedValues<Val<BabyBearPoseidon2>, Challenge<BabyBearPoseidon2>>,
     opening_proof: OpeningProof<BabyBearPoseidon2>,
     chip_ordering: HashMap<String, usize>,
 }

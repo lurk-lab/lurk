@@ -706,8 +706,9 @@ mod tests {
         assert_eq!(trace.values, expected_trace);
     }
 
-    #[ignore]
+    // #[ignore]
     #[test]
+    #[should_panic(expected = "Proofs of long computations are temporarily broken")] // See issue #437
     fn lair_shard_test() {
         sp1_core_machine::utils::setup_logger();
         type C = NoChip;

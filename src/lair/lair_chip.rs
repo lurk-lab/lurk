@@ -3,6 +3,7 @@ use p3_field::{AbstractField, Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_stark::{
     air::{InteractionScope, MachineAir, MachineProgram},
+    septic_digest::SepticDigest,
     Chip,
 };
 
@@ -27,7 +28,6 @@ pub enum LairChip<F, C1: Chipset<F>, C2: Chipset<F>> {
         func_idx: usize,
         num_public_values: usize,
     },
-    Dummy, // FIXME: the prover requires at least one chip with commit_scope local
 }
 
 impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> LairChip<F, C1, C2> {
@@ -51,7 +51,6 @@ impl<F: Field + Sync, C1: Chipset<F>, C2: Chipset<F>> BaseAir<F> for LairChip<F,
             Self::Entrypoint {
                 num_public_values, ..
             } => num_public_values + 1,
-            Self::Dummy => 1,
         }
     }
 }
@@ -61,6 +60,10 @@ pub struct LairMachineProgram;
 impl<F: AbstractField> MachineProgram<F> for LairMachineProgram {
     fn pc_start(&self) -> F {
         F::zero()
+    }
+
+    fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
+        SepticDigest::zero()
     }
 }
 
@@ -74,7 +77,6 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F> for LairChip
             Self::Mem(mem_chip) => format!("Mem[{}-wide]", mem_chip.len),
             Self::Entrypoint { func_idx, .. } => format!("Entrypoint[{func_idx}]"),
             Self::Bytes(_bytes_chip) => "Bytes".to_string(),
-            Self::Dummy => "Dummy".to_string(),
         }
     }
 
@@ -103,11 +105,6 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F> for LairChip
                 public_values.resize(height, F::zero());
                 RowMajorMatrix::new(public_values, self.width())
             }
-            Self::Dummy => {
-                let mut vals = vec![F::zero(); 16];
-                vals[0] = F::one();
-                RowMajorMatrix::new(vals, 1)
-            }
         }
     }
 
@@ -126,7 +123,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F> for LairChip
                 // !range.is_empty()
             }
             Self::Entrypoint { .. } => shard.index == 0,
-            Self::Bytes(..) | Self::Dummy => true,
+            Self::Bytes(..) => true,
         }
     }
 
@@ -145,10 +142,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MachineAir<F> for LairChip
     }
 
     fn commit_scope(&self) -> InteractionScope {
-        match self {
-            Self::Dummy => InteractionScope::Local,
-            _ => InteractionScope::Global,
-        }
+        InteractionScope::Local
     }
 }
 
@@ -191,35 +185,6 @@ where
                     is_real,
                 );
             }
-            Self::Dummy => {
-                // let is_real = builder.main().first_row().collect::<Vec<_>>()[0];
-                let is_real = builder.main().row(0).collect::<Vec<_>>()[0];
-                builder.assert_eq(is_real, is_real);
-                builder.require(
-                    MemoryRelation(
-                        AB::F::from_canonical_u32(1234),
-                        vec![AB::F::from_canonical_u32(1234)],
-                    ),
-                    AB::F::zero(),
-                    RequireRecord {
-                        prev_nonce: AB::F::zero(),
-                        prev_count: AB::F::zero(),
-                        count_inv: AB::F::one(),
-                    },
-                    is_real,
-                );
-                builder.provide(
-                    MemoryRelation(
-                        AB::F::from_canonical_u32(1234),
-                        vec![AB::F::from_canonical_u32(1234)],
-                    ),
-                    ProvideRecord {
-                        last_nonce: AB::F::zero(),
-                        last_count: AB::F::one(),
-                    },
-                    is_real,
-                );
-            }
         }
     }
 }
@@ -238,7 +203,6 @@ pub fn build_lair_chip_vector<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>>(
         chip_vector.push(LairChip::Mem(MemChip::new(mem_len)));
     }
     chip_vector.push(LairChip::Bytes(BytesChip::default()));
-    chip_vector.push(LairChip::Dummy);
     chip_vector
 }
 

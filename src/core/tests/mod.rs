@@ -60,16 +60,17 @@ fn run_tests<C2: Chipset<F>>(
     let lair_chips = build_lair_chip_vector(&lurk_main);
 
     // debug constraints and verify lookup queries with default sharding and with very aggressive sharding
+    // TODO(#437): This needs to be updated when sharding is revisited
     let record = Arc::new(record);
     debug_chip_constraints_and_queries_with_sharding(&record, &lair_chips, None);
-    debug_chip_constraints_and_queries_with_sharding(
-        &record,
-        &lair_chips,
-        Some(SP1CoreOpts {
-            shard_size: 16,
-            ..Default::default()
-        }),
-    );
+    // debug_chip_constraints_and_queries_with_sharding(
+    //     &record,
+    //     &lair_chips,
+    //     Some(SP1CoreOpts {
+    //         shard_size: 16,
+    //         ..Default::default()
+    //     }),
+    // );
 
     // debug constraints with SP1
     let full_shard = Shard::new_arc(&record);
