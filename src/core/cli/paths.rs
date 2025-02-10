@@ -37,6 +37,10 @@ pub(crate) fn microchains_dir() -> Result<Utf8PathBuf> {
 }
 
 #[inline]
-pub(crate) fn repl_history() -> Result<Utf8PathBuf> {
-    Ok(lurk_dir()?.join("repl-history"))
+pub(crate) fn repl_history(lurkscript: bool) -> Result<Utf8PathBuf> {
+    Ok(lurk_dir()?.join(if lurkscript {
+        "lurkscript-repl-history"
+    } else {
+        "repl-history"
+    }))
 }

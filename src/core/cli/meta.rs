@@ -1561,7 +1561,7 @@ mod test {
 
     #[test]
     fn test_def() {
-        let mut repl = Repl::new_native();
+        let mut repl = Repl::new_native(false);
         let foo = repl.zstore.intern_symbol_no_lang(&user_sym("foo"));
         let a = repl.zstore.intern_symbol_no_lang(&user_sym("a"));
         let args = repl.zstore.intern_list([foo, a]);

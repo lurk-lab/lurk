@@ -16,7 +16,7 @@ use sphinx_core::{
     stark::{LocalProver, StarkGenericConfig},
     utils::SphinxCoreOpts,
 };
-use std::{fmt::Debug, io::Write, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, fs, io, io::Write, marker::PhantomData, process::Command, sync::Arc};
 
 use crate::{
     core::{
@@ -51,12 +51,13 @@ use crate::{
 
 #[derive(Helper, Highlighter, Hinter, Completer)]
 struct InputValidator<F: Field> {
+    lurkscript: bool,
     state: StateRcCell,
     _marker: PhantomData<F>,
 }
 
 impl<F: Field> InputValidator<F> {
-    fn try_parse(&self, input: &str) -> Result<(), Error> {
+    fn try_parse_lurk(&self, input: &str) -> Result<(), Error> {
         let mut input = Span::new(input);
         loop {
             match delimited(
@@ -78,12 +79,37 @@ impl<F: Field> InputValidator<F> {
             }
         }
     }
+
+    fn try_parse_lurkscript(&self, input: &str) -> Result<(), ()> {
+        // Try processing LurkScript input
+        let output = Command::new("lurkscript")
+            .arg("-ce")
+            .arg(input)
+            .output()
+            .map_err(|_err| ())?;
+
+        if output.status.success() {
+            // Successfully compiled LurkScript
+            Ok(())
+        } else {
+            // TODO: Properly represent and handle possible Lurkscript errors
+            Err(())
+        }
+    }
+
+    fn can_parse(&self, input: &str) -> bool {
+        if self.lurkscript {
+            self.try_parse_lurkscript(input).is_ok()
+        } else {
+            self.try_parse_lurk(input).is_ok()
+        }
+    }
 }
 
 impl<F: Field + Debug> Validator for InputValidator<F> {
     fn validate(&self, ctx: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
         let input = ctx.input();
-        if input.ends_with("\n\n") || self.try_parse(input).is_ok() {
+        if input.ends_with("\n\n") || self.can_parse(input) {
             // user has pressed enter a lot of times so there is probably a syntax
             // error and we should just send it to the repl
             Ok(ValidationResult::Valid(None))
@@ -130,10 +156,11 @@ pub(crate) struct Repl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
     pub(crate) state: StateRcCell,
     pub(crate) meta_cmds: MetaCmdsMap<F, C1, C2>,
     pub(crate) lang_symbols: FxHashSet<Symbol>,
+    pub(crate) lurkscript: bool,
 }
 
 impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
-    pub(crate) fn new(lang: Lang<BabyBear, C2>) -> Self {
+    pub(crate) fn new(lang: Lang<BabyBear, C2>, lurkscript: bool) -> Self {
         let (toplevel, mut zstore, lang_symbols) = build_lurk_toplevel(lang);
         let func_indices = FuncIndices::new(&toplevel);
         let env = zstore.intern_empty_env();
@@ -146,6 +173,7 @@ impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
             state: State::init_lurk_state().rccell(),
             meta_cmds: meta_cmds(),
             lang_symbols,
+            lurkscript,
         }
     }
 }
@@ -153,8 +181,8 @@ impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
 impl Repl<BabyBear, LurkChip, NoChip> {
     /// Creates a REPL instance for the empty Lang with `C2 = NoChip`
     #[inline]
-    pub(crate) fn new_native() -> Self {
-        Self::new(Lang::empty())
+    pub(crate) fn new_native(lurkscript: bool) -> Self {
+        Self::new(Lang::empty(), lurkscript)
     }
 }
 
@@ -178,7 +206,7 @@ impl<C1: Chipset<BabyBear>, C2: Chipset<BabyBear>> Repl<BabyBear, C1, C2> {
         let must_prove = if !proof_path.exists() {
             true
         } else {
-            let cached_proof_bytes = std::fs::read(&proof_path)?;
+            let cached_proof_bytes = fs::read(&proof_path)?;
             if let Ok(cached_proof) = bincode::deserialize::<CachedProof>(&cached_proof_bytes) {
                 let machine_proof = cached_proof.into_machine_proof();
                 let challenger_v = &mut challenger_p.clone();
@@ -200,7 +228,7 @@ impl<C1: Chipset<BabyBear>, C2: Chipset<BabyBear>> Repl<BabyBear, C1, C2> {
             let crypto_proof: CryptoProof = machine_proof.into();
             let cached_proof = CachedProof::new(crypto_proof, public_values, &self.zstore);
             let cached_proof_bytes = bincode::serialize(&cached_proof)?;
-            std::fs::write(proof_path, cached_proof_bytes)?;
+            fs::write(proof_path, cached_proof_bytes)?;
         }
         println!("Proof key: \"{proof_key}\"");
         Ok(proof_key)
@@ -620,9 +648,9 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             } else {
                 print!("{potential_commentaries}{prompt_marker}{actual_syntax}");
             }
-            std::io::stdout().flush()?;
+            io::stdout().flush()?;
             // wait for ENTER to be pressed
-            std::io::stdin().read_line(&mut String::new())?;
+            io::stdin().read_line(&mut String::new())?;
             // ENTER already prints a new line so we can remove it from the start of incoming input
             new_input = new_input.trim_start_matches('\n').into();
         }
@@ -639,15 +667,36 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
     }
 
     pub(crate) fn load_file(&mut self, file_path: &Utf8Path, demo: bool) -> Result<()> {
-        let input = std::fs::read_to_string(file_path)?;
         let Some(file_dir) = file_path.parent() else {
             bail!("Can't get the parent of {file_path}");
         };
+
+        let input = if file_path.extension().map_or(false, |ext| ext == "ls") {
+            // Compile LurkScript (.ls) to Lurk using `lurkscript -c <filename>`
+            let output = Command::new("lurkscript")
+                .arg("-c")
+                .arg(file_path.as_os_str()) // Use absolute path
+                .output()?;
+
+            if !output.status.success() {
+                bail!(
+                    "LurkScript transpilation failed for {file_path}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+
+            String::from_utf8(output.stdout)?
+        } else {
+            // Read file as normal if it's not .ls
+            fs::read_to_string(file_path)?
+        };
+
         if demo {
             println!("Loading {file_path} in demo mode");
         } else {
             println!("Loading {file_path}");
         }
+
         let mut input = Span::new(&input);
         loop {
             match self.handle_form(input, file_dir, demo) {
@@ -675,11 +724,12 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         let mut editor: Editor<InputValidator<F>, DefaultHistory> = Editor::with_config(config)?;
 
         editor.set_helper(Some(InputValidator::<F> {
+            lurkscript: self.lurkscript,
             state: self.state.clone(),
             _marker: Default::default(),
         }));
 
-        let repl_history = &repl_history()?;
+        let repl_history = &repl_history(self.lurkscript)?;
         if repl_history.exists() {
             editor.load_history(repl_history)?;
         }
@@ -690,6 +740,20 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             match editor.readline(&self.prompt_marker()) {
                 Ok(mut line) => {
                     editor.add_history_entry(&line)?;
+
+                    if self.lurkscript {
+                        // Process LurkScript input
+                        let output = Command::new("lurkscript").arg("-ce").arg(&line).output()?;
+
+                        if output.status.success() {
+                            // Successfully compiled LurkScript, replace buffer with the output
+                            line = String::from_utf8(output.stdout)?;
+                        } else {
+                            // Print out raw error for now
+                            eprintln!("Error: {}", String::from_utf8(output.stderr)?);
+                            continue;
+                        }
+                    }
 
                     while !line.trim_end().is_empty() {
                         match self.process(Span::new(&line), &pwd_path) {

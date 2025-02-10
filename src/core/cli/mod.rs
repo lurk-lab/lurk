@@ -41,12 +41,18 @@ struct ReplArgs {
     /// Optional file to be loaded before entering the REPL
     #[clap(long, value_parser)]
     preload: Option<Utf8PathBuf>,
+
+    #[arg(long)]
+    lurkscript: bool,
 }
 
 #[derive(Parser, Debug)]
 struct ReplCli {
     #[clap(long, value_parser)]
     preload: Option<Utf8PathBuf>,
+
+    #[arg(long)]
+    lurkscript: bool,
 }
 
 #[derive(Args, Debug)]
@@ -85,8 +91,14 @@ fn parse_filename(file: &str) -> Result<Utf8PathBuf> {
 
 impl ReplArgs {
     fn into_cli(self) -> ReplCli {
-        let Self { preload } = self;
-        ReplCli { preload }
+        let Self {
+            preload,
+            lurkscript,
+        } = self;
+        ReplCli {
+            preload,
+            lurkscript,
+        }
     }
 }
 
@@ -117,7 +129,7 @@ impl Cli {
 
 impl ReplCli {
     fn run(&self) -> Result<()> {
-        let mut repl = Repl::new_native();
+        let mut repl = Repl::new_native(self.lurkscript);
         if let Some(lurk_file) = &self.preload {
             repl.load_file(lurk_file, false)?;
         }
@@ -127,7 +139,7 @@ impl ReplCli {
 
 impl LoadCli {
     fn run(&self) -> Result<()> {
-        let mut repl = Repl::new_native();
+        let mut repl = Repl::new_native(false);
         repl.load_file(&self.lurk_file, self.demo)?;
         if self.prove {
             repl.prove_last_reduction()?;
