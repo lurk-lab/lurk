@@ -26,3 +26,6 @@ target/
 
 **/scratch/
 debug_output/
+
+# MacOS
+.DS_Store

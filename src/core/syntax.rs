@@ -1,4 +1,5 @@
 use p3_field::PrimeField;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::big_num::field_elts_to_biguint;
@@ -7,7 +8,7 @@ use super::parser::position::Pos;
 use super::zstore::DIGEST_SIZE;
 
 /// Lurk's syntax for parsing
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Syntax<F> {
     /// An element of the finite field `F`: 1n, 0xffn
     Num(Pos, F),

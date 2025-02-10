@@ -1,11 +1,11 @@
-mod comm_data;
+pub mod comm_data;
 mod config;
 mod debug;
-mod lurk_data;
+pub mod lurk_data;
 mod meta;
-mod microchain;
+pub mod microchain;
 mod paths;
-mod proofs;
+pub mod proofs;
 mod rdg;
 pub mod repl;
 #[cfg(test)]

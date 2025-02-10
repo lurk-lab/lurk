@@ -37,7 +37,9 @@ sp1-core-executor = "3.4.0"
 sp1-derive = "3.4.0"
 sp1-stark = "3.4.0"
 sp1-sdk = "3.4.0"
-anyhow = "1.0.72"
+async-graphql = "=7.0.2"
+async-graphql-derive = "=7.0.2"
+anyhow = "1.0.80"
 ascent = { git = "https://github.com/argumentcomputer/ascent.git" }
 arc-swap = "1.7.1"
 base-x = "0.2.11"
@@ -47,6 +49,7 @@ clap = "4.5.15"
 criterion = "0.5"
 either = "1"
 expect-test = "1.4.1"
+hex = "0.4.3"
 home = "0.5"
 indexmap = "2.2.6"
 match_opt = "0.1.2"
@@ -73,6 +76,7 @@ lazy_static = "1.4.0"
 hashbrown = "0.14.5"
 rand_chacha = "0.3.1"
 proptest = "1.5.0"
+serde-big-array = "0.5"
 
 loam-macros = { version = "0.1.0", path = "loam-macros" }
 derive-syn-parse = "0.2.0"
@@ -81,6 +85,8 @@ quote = "1.0.31"
 syn = "2.0.57"
 
 [dependencies]
+async-graphql = { workspace = true }
+async-graphql-derive = { workspace = true }
 anyhow = { workspace = true }
 ascent = { workspace = true }
 arc-swap = { workspace = true }
@@ -90,6 +96,7 @@ camino = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 expect-test = { workspace = true }
 either = { workspace = true }
+hex = { workspace = true }
 home = { workspace = true }
 hybrid-array = { workspace = true }
 indexmap = { workspace = true, features = ["rayon"] }
@@ -133,6 +140,7 @@ sp1-derive = { workspace = true }
 sp1-stark = { workspace = true }
 sp1-sdk = { workspace = true }
 hashbrown = { workspace = true }
+serde-big-array = { workspace = true }
 
 loam-macros = { workspace = true }
 

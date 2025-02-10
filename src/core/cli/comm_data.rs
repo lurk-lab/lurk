@@ -9,15 +9,15 @@ use crate::{
 
 use super::zdag::ZDag;
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct CommData<F: Hash + Eq> {
-    pub(crate) secret: [F; DIGEST_SIZE],
-    pub(crate) payload: ZPtr<F>,
-    pub(crate) zdag: ZDag<F>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommData<F: Hash + Eq> {
+    pub secret: [F; DIGEST_SIZE],
+    pub payload: ZPtr<F>,
+    pub zdag: ZDag<F>,
 }
 
 impl<F: Field> CommData<F> {
-    pub(crate) fn hash<C: Chipset<F>>(
+    pub fn hash<C: Chipset<F>>(
         secret: &[F; DIGEST_SIZE],
         payload: &ZPtr<F>,
         zstore: &mut ZStore<F, C>,
@@ -31,7 +31,7 @@ impl<F: Field> CommData<F> {
 
 impl<F: Field + Hash + Eq + Default + Copy> CommData<F> {
     #[inline]
-    pub(crate) fn new<C: Chipset<F>>(
+    pub fn new<C: Chipset<F>>(
         secret: [F; DIGEST_SIZE],
         payload: ZPtr<F>,
         zstore: &ZStore<F, C>,
@@ -53,7 +53,7 @@ impl<F: Field + Hash + Eq + Default + Copy> CommData<F> {
     }
 
     #[inline]
-    pub(crate) fn commit<C: Chipset<F>>(&self, zstore: &mut ZStore<F, C>) -> ZPtr<F>
+    pub fn commit<C: Chipset<F>>(&self, zstore: &mut ZStore<F, C>) -> ZPtr<F>
     where
         F: Field,
     {
@@ -61,7 +61,7 @@ impl<F: Field + Hash + Eq + Default + Copy> CommData<F> {
     }
 
     #[inline]
-    pub(crate) fn populate_zstore<C: Chipset<F>>(self, zstore: &mut ZStore<F, C>)
+    pub fn populate_zstore<C: Chipset<F>>(self, zstore: &mut ZStore<F, C>)
     where
         F: Field,
     {
@@ -73,7 +73,7 @@ impl<F: Field + Hash + Eq + Default + Copy> CommData<F> {
 
 impl<F: Field> CommData<F> {
     #[inline]
-    pub(crate) fn payload_is_flawed<C: Chipset<F>>(&self, zstore: &mut ZStore<F, C>) -> bool {
+    pub fn payload_is_flawed<C: Chipset<F>>(&self, zstore: &mut ZStore<F, C>) -> bool {
         self.zdag.is_flawed(&self.payload, zstore)
     }
 }

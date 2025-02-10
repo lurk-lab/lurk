@@ -1,9 +1,10 @@
 use std::hash::Hash;
+use serde::{Deserialize, Serialize};
 
 use crate::core::parser::Span;
 
 /// Source code position of an expression in a file
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum Pos {
     No,
     Pos {

@@ -7,7 +7,7 @@ use sp1_stark::StarkGenericConfig;
 use std::{
     hash::Hash,
     io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpStream}, time::Duration,
 };
 
 use crate::{
@@ -31,7 +31,7 @@ use super::{
 };
 
 #[derive(Args, Debug)]
-pub(crate) struct MicrochainArgs {
+pub struct MicrochainArgs {
     // The IP address with the port. E.g. "127.0.0.1:1234"
     #[clap(value_parser)]
     addr: String,
@@ -39,21 +39,21 @@ pub(crate) struct MicrochainArgs {
 
 type F = BabyBear;
 
-#[derive(Serialize, Deserialize)]
-pub(crate) enum CallableData {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CallableData {
     Comm(CommData<F>),
     Fun(LurkData<F>),
 }
 
 impl CallableData {
-    fn is_flawed(&self, zstore: &mut ZStore<F, LurkChip>) -> bool {
+    pub fn is_flawed(&self, zstore: &mut ZStore<F, LurkChip>) -> bool {
         match self {
             Self::Comm(comm_data) => comm_data.payload_is_flawed(zstore),
             Self::Fun(lurk_data) => lurk_data.is_flawed(zstore),
         }
     }
 
-    fn zptr(&self, zstore: &mut ZStore<F, LurkChip>) -> ZPtr<F> {
+    pub fn zptr(&self, zstore: &mut ZStore<F, LurkChip>) -> ZPtr<F> {
         match self {
             Self::Comm(comm_data) => comm_data.commit(zstore),
             Self::Fun(lurk_data) => lurk_data.zptr,
@@ -64,14 +64,14 @@ impl CallableData {
 /// Encodes a `(chain-result . callable)` pair, the result of chaining a callable.
 /// The pair components carry the corresponding `ZDag`s in order to be fully
 /// transferable between clients (through the server)
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ChainState {
-    pub(crate) chain_result: LurkData<F>,
-    pub(crate) callable_data: CallableData,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainState {
+    pub chain_result: LurkData<F>,
+    pub callable_data: CallableData,
 }
 
 impl ChainState {
-    pub(crate) fn into_zptr<C1: Chipset<F>>(self, zstore: &mut ZStore<F, C1>) -> ZPtr<F> {
+    pub fn into_zptr<C1: Chipset<F>>(self, zstore: &mut ZStore<F, C1>) -> ZPtr<F> {
         let Self {
             chain_result,
             callable_data,
@@ -90,7 +90,7 @@ impl ChainState {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) enum Request {
+pub enum Request {
     Start(ChainState),
     GetGenesis([F; DIGEST_SIZE]),
     GetState([F; DIGEST_SIZE]),
@@ -99,7 +99,7 @@ pub(crate) enum Request {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) enum Response {
+pub enum Response {
     BadRequest,
     IdSecret([F; DIGEST_SIZE]),
     NoDataForId,
@@ -119,17 +119,19 @@ pub(crate) enum Response {
 type Genesis = ([F; DIGEST_SIZE], ChainState);
 
 impl MicrochainArgs {
-    pub(crate) fn run(self) -> Result<()> {
+    pub fn run(self) -> Result<()> {
         let MicrochainArgs { addr } = self;
         let listener = TcpListener::bind(&addr)?;
         println!("Listening at {addr}");
 
         let (toplevel, mut zstore, _) = build_lurk_toplevel(Lang::empty());
         let empty_env = zstore.intern_empty_env();
+        let mut index = 0;
 
         for stream in listener.incoming() {
             match stream {
                 Ok(mut stream) => {
+                    stream.set_nodelay(true)?;
                     macro_rules! return_msg {
                         ($data:expr) => {{
                             write_data(&mut stream, $data)?;
@@ -141,10 +143,13 @@ impl MicrochainArgs {
                     };
                     match request {
                         Request::Start(chain_state) => {
+                            println!("new start request");
                             if chain_state.chain_result.is_flawed(&mut zstore) {
+                                println!("Chain result is flawed");
                                 return_msg!(Response::ChainResultIsFlawed);
                             }
                             if chain_state.callable_data.is_flawed(&mut zstore) {
+                                println!("Callable data is flawed");
                                 return_msg!(Response::NextCallableIsFlawed);
                             }
 
@@ -154,10 +159,15 @@ impl MicrochainArgs {
                                 zstore.intern_cons(chain_state.chain_result.zptr, callable_zptr);
                             let id = CommData::hash(&id_secret, &state_cons, &mut zstore);
 
+                            dump_genesis_state(&id, &chain_state)?;
+
                             dump_state(&id, &chain_state)?;
                             dump_genesis(&id, &(id_secret, chain_state))?;
                             dump_proofs(&id, &[])?;
-                            return_msg!(Response::IdSecret(id_secret));
+                            println!("Writing response");
+                            write_data(&mut stream, Response::IdSecret(id_secret))?;
+                            println!("Response written");
+                            continue;
                         }
                         Request::GetGenesis(id) => {
                             let Ok((id_secret, genesis)) = load_genesis(&id) else {
@@ -176,6 +186,9 @@ impl MicrochainArgs {
                             else {
                                 return_msg!(Response::NoDataForId);
                             };
+                            
+                            dump_proof(&id, index, &chain_proof)?;
+                            index += 1;
 
                             let ChainProof {
                                 crypto_proof,
@@ -390,8 +403,16 @@ fn dump_genesis(id: &[F], genesis: &Genesis) -> Result<()> {
     dump_microchain_data(id, "genesis", genesis)
 }
 
+fn dump_genesis_state(id: &[F], genesis_state: &ChainState) -> Result<()> {
+    dump_microchain_data(id, "genesis_state", genesis_state)
+}
+
 fn dump_proofs(id: &[F], proofs: &[OpaqueChainProof]) -> Result<()> {
     dump_microchain_data(id, "proofs", proofs)
+}
+
+fn dump_proof(id: &[F], index: usize, proof: &ChainProof) -> Result<()> {
+    dump_microchain_data(id, &format!("_{index}"), proof)
 }
 
 fn dump_state(id: &[F], state: &ChainState) -> Result<()> {
@@ -425,20 +446,66 @@ fn load_proof_index(id: &[F]) -> Result<ProofIndex<F>> {
     load_microchain_data(id, "proof_index")
 }
 
-pub(crate) fn read_data<T: for<'a> Deserialize<'a>>(stream: &mut TcpStream) -> Result<T> {
-    let mut size_bytes = [0; 8];
-    stream.read_exact(&mut size_bytes)?;
-    let size = usize::from_le_bytes(size_bytes);
-    let mut data_buffer = vec![0; size];
-    stream.read_exact(&mut data_buffer)?;
-    let data = bincode::deserialize(&data_buffer)?;
-    Ok(data)
+pub(crate) fn write_data<T: Serialize>(stream: &mut TcpStream, data: T) -> Result<()> {
+    // Set write timeout
+    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
+    
+    let data_bytes = bincode::serialize(&data)?;
+    println!("Attempting to write length: {}", data_bytes.len());
+    match stream.write_all(&data_bytes.len().to_le_bytes()) {
+        Ok(_) => println!("Length written successfully"),
+        Err(e) => println!("Error writing length: {}", e),
+    }
+    
+    match stream.flush() {
+        Ok(_) => println!("Flush after length successful"),
+        Err(e) => println!("Error flushing after length: {}", e),
+    }
+    
+    println!("Attempting to write {} bytes of data", data_bytes.len());
+    match stream.write_all(&data_bytes) {
+        Ok(_) => println!("Data written successfully"),
+        Err(e) => println!("Error writing data: {}", e),
+    }
+    
+    match stream.flush() {
+        Ok(_) => println!("Final flush successful"),
+        Err(e) => println!("Error on final flush: {}", e),
+    }
+    
+    Ok(())
 }
 
-pub(crate) fn write_data<T: Serialize>(stream: &mut TcpStream, data: T) -> Result<()> {
-    let data_bytes = bincode::serialize(&data)?;
-    stream.write_all(&data_bytes.len().to_le_bytes())?;
-    stream.write_all(&data_bytes)?;
-    stream.flush()?;
-    Ok(())
+pub(crate) fn read_data<T: for<'a> Deserialize<'a>>(stream: &mut TcpStream) -> Result<T> {
+    stream.set_nonblocking(false)?;
+
+    // Set read timeout
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    
+    println!("Reading length...");
+    let mut size_bytes = [0; 8];
+    match stream.read_exact(&mut size_bytes) {
+        Ok(_) => println!("Read length bytes successfully"),
+        Err(e) => println!("Error reading length bytes: {}", e),
+    }
+    
+    let size = usize::from_le_bytes(size_bytes);
+    println!("Got length: {} bytes", size);
+    
+    if size > 10_000_000 {  // 10MB sanity check
+        return Err(anyhow::anyhow!("Size too large: {}", size));
+    }
+    
+    let mut data_buffer = vec![0; size];
+    println!("Reading {} bytes of data...", size);
+    match stream.read_exact(&mut data_buffer) {
+        Ok(_) => println!("Read data successfully"),
+        Err(e) => println!("Error reading data: {}", e),
+    }
+    
+    println!("Deserializing data...");
+    let data = bincode::deserialize(&data_buffer)?;
+    println!("Deserialization complete");
+    
+    Ok(data)
 }

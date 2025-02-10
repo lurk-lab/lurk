@@ -26,7 +26,7 @@ struct CryptoShardProof {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct CryptoProof {
+pub struct CryptoProof {
     shard_proofs: Vec<CryptoShardProof>,
     verifier_version: String,
     depth: u32,
@@ -35,13 +35,13 @@ pub(crate) struct CryptoProof {
 type F = BabyBear;
 
 #[inline]
-pub(crate) fn get_verifier_version() -> &'static str {
+pub fn get_verifier_version() -> &'static str {
     env!("VERGEN_GIT_SHA")
 }
 
 impl CryptoProof {
     #[inline]
-    pub(crate) fn into_machine_proof(
+    pub fn into_machine_proof(
         self,
         expr: &ZPtr<F>,
         env: &ZPtr<F>,
@@ -75,7 +75,7 @@ impl CryptoProof {
     }
 
     #[inline]
-    pub(crate) fn has_same_verifier_version(&self) -> bool {
+    pub fn has_same_verifier_version(&self) -> bool {
         self.verifier_version == get_verifier_version()
     }
 }
@@ -199,19 +199,19 @@ impl ProtocolProof {
 /// A proof of state transition, with the Lurk data for the new state fully
 /// specified and ready to be shared with parties wanting to continue the chain.
 #[derive(Serialize, Deserialize)]
-pub(crate) struct ChainProof {
-    pub(crate) crypto_proof: CryptoProof,
-    pub(crate) call_args: ZPtr<F>,
-    pub(crate) next_chain_result: LurkData<F>,
-    pub(crate) next_callable: CallableData,
+pub struct ChainProof {
+    pub crypto_proof: CryptoProof,
+    pub call_args: ZPtr<F>,
+    pub next_chain_result: LurkData<F>,
+    pub next_callable: CallableData,
 }
 
 /// A slightly smaller version of `ChainProof` meant to be kept as transition
 /// record and shared for verification purposes.
 #[derive(Serialize, Deserialize)]
-pub(crate) struct OpaqueChainProof {
-    pub(crate) crypto_proof: CryptoProof,
-    pub(crate) call_args: ZPtr<F>,
-    pub(crate) next_chain_result: ZPtr<F>,
-    pub(crate) next_callable: ZPtr<F>,
+pub struct OpaqueChainProof {
+    pub crypto_proof: CryptoProof,
+    pub call_args: ZPtr<F>,
+    pub next_chain_result: ZPtr<F>,
+    pub next_callable: ZPtr<F>,
 }

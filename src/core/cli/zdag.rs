@@ -8,13 +8,13 @@ use crate::{
 };
 
 /// Holds Lurk data meant to be persisted and/or shared
-#[derive(Default, Serialize, Deserialize)]
-pub(crate) struct ZDag<F: std::hash::Hash + Eq>(FxHashMap<ZPtr<F>, ZPtrType<F>>);
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ZDag<F: std::hash::Hash + Eq>(FxHashMap<ZPtr<F>, ZPtrType<F>>);
 
 impl<F: std::hash::Hash + Eq + Copy> ZDag<F> {
     /// Traverses a ZStore DAG, starting from a given `ZPtr`, while populating
     /// itself.
-    pub(crate) fn populate_with<'a, C: Chipset<F>>(
+    pub fn populate_with<'a, C: Chipset<F>>(
         &mut self,
         zptr: &'a ZPtr<F>,
         zstore: &'a ZStore<F, C>,
@@ -44,7 +44,7 @@ impl<F: std::hash::Hash + Eq + Copy> ZDag<F> {
     }
 
     /// Calls `populate_with` for a sequence of `ZPtr`s
-    pub(crate) fn populate_with_many<'a, C: Chipset<F>>(
+    pub fn populate_with_many<'a, C: Chipset<F>>(
         &mut self,
         zptrs: impl IntoIterator<Item = &'a ZPtr<F>>,
         zstore: &ZStore<F, C>,
@@ -58,7 +58,7 @@ impl<F: std::hash::Hash + Eq + Copy> ZDag<F> {
     }
 
     /// Moves its data to a target ZStore
-    pub(crate) fn populate_zstore<C: Chipset<F>>(self, zstore: &mut ZStore<F, C>)
+    pub fn populate_zstore<C: Chipset<F>>(self, zstore: &mut ZStore<F, C>)
     where
         F: AbstractField + Copy,
     {
@@ -86,7 +86,7 @@ impl<F: Field> ZDag<F> {
     /// from `zptr`:
     /// * A digest mismatch is found (which is enough to also spot cycles)
     /// * There's data missing
-    pub(crate) fn is_flawed<'a, C: Chipset<F>>(
+    pub fn is_flawed<'a, C: Chipset<F>>(
         &'a self,
         zptr: &'a ZPtr<F>,
         zstore: &mut ZStore<F, C>,

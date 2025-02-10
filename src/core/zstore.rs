@@ -7,6 +7,7 @@ use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, Field, PrimeField32};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
+use serde_big_array::Array;
 use std::{hash::Hash, marker::PhantomData};
 
 use crate::{
@@ -209,7 +210,7 @@ impl<F: AbstractField + Copy> ZPtr<F> {
 /// "Tuple" tells the number of children a parent node has. From left to right,
 /// a 0 on position i means that the tag of the i-th child won't be used to compute
 /// the digest of such parent node. And 1 means that the tag will be used.
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ZPtrType<F> {
     /// A leaf node without children
     Atom,
@@ -288,6 +289,98 @@ impl Default for ZStore<BabyBear, LurkChip> {
         zstore.t = zstore.intern_symbol_no_lang(&lurk_sym("t"));
         zstore.quote = zstore.intern_symbol_no_lang(quote());
         zstore
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ZStoreView<F: Hash + Eq> {
+    pub dag: Vec<(ZPtr<F>, ZPtrType<F>)>,
+    pub hashes3: Vec<(Array<F, HASH3_SIZE>, Array<F, DIGEST_SIZE>)>,
+    pub hashes4: Vec<(Array<F, HASH4_SIZE>, Array<F, DIGEST_SIZE>)>,
+    pub hashes5: Vec<(Array<F, HASH5_SIZE>, Array<F, DIGEST_SIZE>)>,
+    pub hashes3_diff: Vec<(Array<F, HASH3_SIZE>, Array<F, DIGEST_SIZE>)>,
+    pub hashes4_diff: Vec<(Array<F, HASH4_SIZE>, Array<F, DIGEST_SIZE>)>,
+    pub hashes5_diff: Vec<(Array<F, HASH5_SIZE>, Array<F, DIGEST_SIZE>)>,
+    str_cache: Vec<(String, ZPtr<F>)>,
+    sym_cache: Vec<(Symbol, ZPtr<F>)>,
+    syn_cache: Vec<(Syntax<F>, ZPtr<F>)>,
+    nil: ZPtr<F>,
+    t: ZPtr<F>,
+    quote: ZPtr<F>,
+}
+
+impl<F: Hash + Eq + Serialize + Deserialize<'static>, C: Chipset<F>> ZStore<F, C> {
+    pub fn to_view(self) -> ZStoreView<F> {
+        ZStoreView {
+            dag: self.dag.into_iter().map(|(k, v)| (k, v)).collect(),
+            hashes3: self
+                .hashes3
+                .into_iter()
+                .map(|(k, v)| (Array(k), Array(v)))
+                .collect(),
+            hashes4: self
+                .hashes4
+                .into_iter()
+                .map(|(k, v)| (Array(k), Array(v)))
+                .collect(),
+            hashes5: self
+                .hashes5
+                .into_iter()
+                .map(|(k, v)| (Array(k), Array(v)))
+                .collect(),
+            hashes3_diff: self
+                .hashes3_diff
+                .into_iter()
+                .map(|(k, v)| (Array(k), Array(v)))
+                .collect(),
+            hashes4_diff: self
+                .hashes4_diff
+                .into_iter()
+                .map(|(k, v)| (Array(k), Array(v)))
+                .collect(),
+            hashes5_diff: self
+                .hashes5_diff
+                .into_iter()
+                .map(|(k, v)| (Array(k), Array(v)))
+                .collect(),
+            str_cache: self.str_cache.into_iter().map(|(k, v)| (k, v)).collect(),
+            sym_cache: self.sym_cache.into_iter().map(|(k, v)| (k, v)).collect(),
+            syn_cache: self.syn_cache.into_iter().map(|(k, v)| (k, v)).collect(),
+            nil: self.nil,
+            t: self.t,
+            quote: self.quote,
+        }
+    }
+
+    pub fn from_view(view: ZStoreView<F>, hasher: Hasher<F, C>) -> Self {
+        Self {
+            hasher,
+            dag: view.dag.into_iter().collect(),
+            hashes3: view.hashes3.into_iter().map(|(k, v)| (k.0, v.0)).collect(),
+            hashes4: view.hashes4.into_iter().map(|(k, v)| (k.0, v.0)).collect(),
+            hashes5: view.hashes5.into_iter().map(|(k, v)| (k.0, v.0)).collect(),
+            hashes3_diff: view
+                .hashes3_diff
+                .into_iter()
+                .map(|(k, v)| (k.0, v.0))
+                .collect(),
+            hashes4_diff: view
+                .hashes4_diff
+                .into_iter()
+                .map(|(k, v)| (k.0, v.0))
+                .collect(),
+            hashes5_diff: view
+                .hashes5_diff
+                .into_iter()
+                .map(|(k, v)| (k.0, v.0))
+                .collect(),
+            str_cache: view.str_cache.into_iter().collect(),
+            sym_cache: view.sym_cache.into_iter().collect(),
+            syn_cache: view.syn_cache.into_iter().collect(),
+            nil: view.nil,
+            t: view.t,
+            quote: view.quote,
+        }
     }
 }
 
