@@ -32,7 +32,6 @@ def(assert_, x => x || error(assertionFailure.key, nil))
 // This should be a macro, so we can include the unevaluated form in the error.
 def(ensure, x => x || fail())
 
-// TODO: better handling of ?
 defrec(member, function (x, l) {
   if (l) {
     x === car(l) ? x : member(x, cdr(l))
