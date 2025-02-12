@@ -27,7 +27,7 @@
               (break))))
 
 ;; This should be a macro, so we can include the unevaluated form in the error.
-!(def assert (lambda (x) (if x x (error :assertion-failure nil))))
+!(def assert_ (lambda (x) (if x x (error :assertion-failure nil))))
 
 ;; This should be a macro, so we can include the unevaluated form in the error.
 !(def ensure (lambda (x) (if x x (fail))))
@@ -86,7 +86,7 @@
                                (cons acc (cdr plist))
                                (aux (cons (cadr plist)
                                           (cons (car plist) acc))
-                                    (cdr (cdr plist))))))))
+                                    (cddr plist)))))))
          (aux nil plist))))
 
 !(def set-property (lambda (plist indicator value)
@@ -185,8 +185,6 @@
                       (if (cdr args)
                           (applyx (f (car args)) (cdr args))
                           (f (car args))))))
-
-!(def not (lambda (x) (if x nil t)))
 
 !(def fold (lambda (f acc list)
              (letrec ((aux (lambda (acc list)

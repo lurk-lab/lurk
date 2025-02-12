@@ -6,9 +6,9 @@
 ;; error
 !(assert-error (error :nasty 123))
 
-;; assert
-!(assert-eq 9 (assert 9))
-!(assert-error (assert (= 5 (+ 2 2))))
+;; assert_
+!(assert-eq 9 (assert_ 9))
+!(assert-error (assert_ (= 5 (+ 2 2))))
 
 ;; ensure
 !(assert-eq 5 (ensure 5))
