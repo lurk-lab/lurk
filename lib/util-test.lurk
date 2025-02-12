@@ -16,8 +16,8 @@
 ;!(assert-error (ensure nil))
 
 ;; member
-!(assert (member? 2 '(1 2 3)))
-!(assert (not (member? 4 '(1 2 3 ))))
+!(assert (member 2 '(1 2 3)))
+!(assert (not (member 4 '(1 2 3 ))))
 
 ;; position
 !(assert-eq 2 (position :c '(:a :b :c :d)))
