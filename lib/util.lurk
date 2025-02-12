@@ -32,11 +32,11 @@
 ;; This should be a macro, so we can include the unevaluated form in the error.
 !(def ensure (lambda (x) (if x x (fail))))
 
-!(defrec member? (lambda (x l)
-                   (if l
-                       (if (eq x (car l))
-                           x
-                           (member? x (cdr l))))))
+!(defrec member (lambda (x l)
+                  (if l
+                      (if (eq x (car l))
+                          x
+                          (member x (cdr l))))))
 
 !(def position (lambda (elt l)
                  (letrec ((aux (lambda (l)

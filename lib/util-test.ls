@@ -17,8 +17,8 @@ assertEq(5, ensure(5))
 
 // member
 // TODO: make this better.
-assert('member?'.sym(2, [1, 2, 3]))
-assert(not('member?'.sym(4, [1, 2, 3])))
+assert(member(2, [1, 2, 3]))
+assert(not(member(4, [1, 2, 3])))
 
 // position
 assertEq(2, position(c.key, [a.key, b.key, c.key, d.key]))
