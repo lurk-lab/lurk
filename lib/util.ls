@@ -33,9 +33,9 @@ def(assert_, x => x ? x : error(assertionFailure.key, nil))
 def(ensure, x => x ? x : fail())
 
 // TODO: better handling of ?
-defrec('member?'.sym, function (x, l) {
+defrec(member, function (x, l) {
   if (l) {
-    x === car(l) ? x : 'member?'.sym(x, cdr(l))
+    x === car(l) ? x : member(x, cdr(l))
   }})
 
 def(position, (elt, l) => {

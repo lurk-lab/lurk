@@ -40,12 +40,12 @@
                                  (let ((head (car expanded)))
                                    (if (eq head 'quote)
                                        src
-                                       (if (member? head '(let letrec))
+                                       (if (member head '(let letrec))
                                            (cons head (cons (map (lambda (binding)
                                                                    (list (car binding) (macroexpand-all macro-env (cadr binding))))
                                                                  (cadr expanded))
                                                             (macroexpand-all macro-env (cddr expanded))))
-                                           (if (member? head '(eqq type-eqq lambda))
+                                           (if (member head '(eqq type-eqq lambda))
                                                (cons head
                                                      (cons (cadr expanded)
                                                            (map (macroexpand-all macro-env) (cddr expanded))))
