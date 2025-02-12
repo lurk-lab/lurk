@@ -24,7 +24,6 @@
 
 ;; nth
 !(assert-eq :c (nth 2 '(:a :b :c :d)))
-!(assert-eq :c (nth 2 '(:a :b :c :d)))
 
 ;; append
 !(assert-eq nil (append nil nil))
@@ -41,7 +40,6 @@
 
 ;; getf
 !(assert-eq 2 (getf '(:a 1 :b 2 :c 3) :b))
-;(emit (cons :getf-2 (getf '(:a 1 :b 2 :c 3) :b))) ; 30 iterations
 !(assert-eq nil (getf '(:a 1 :b 2 :c 3) :d))
 
 ;; set-property
@@ -59,10 +57,10 @@
 
 ;; assoc
 !(assert-eq '(:b . 2) (assoc :b '((:a . 1) (:b . 2) (:c . 3))))
-(emit (cons :assoc-b (assoc :b '((:a . 1) (:b . 2) (:c . 3))))) ;; 29 iterations
+(emit (cons :assoc-b (assoc :b '((:a . 1) (:b . 2) (:c . 3))))) ;; 30 iterations
 
 !(assert-eq nil (assoc :d '((:a . 1) (:b . 2) (:c . 3))))
-(emit (cons :assoc-d (assoc :d '((:a . 1) (:b . 2) (:c . 3))))) ; 44 iterations
+(emit (cons :assoc-d (assoc :d '((:a . 1) (:b . 2) (:c . 3))))) ; 45 iterations
 
 !(assert-eq nil (assoc :d '((:a . 1) (:b . 2) (:c . 3))))
 
