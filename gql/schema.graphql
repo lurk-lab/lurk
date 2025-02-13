@@ -1,0 +1,12 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Query {
+  chainState: [Int!]!
+}
+
+type Mutation {
+  transition(chainProof: String!): Boolean!
+}

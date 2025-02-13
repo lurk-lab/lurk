@@ -14,7 +14,7 @@ use rustyline::{
 };
 use sp1_stark::{CpuProver, StarkGenericConfig};
 use sp1_stark::{MachineProver, SP1CoreOpts};
-use std::{fmt::Debug, io::Write, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, fs, io::{self, Write}, marker::PhantomData, process::Command, sync::Arc};
 
 use crate::{
     core::{
@@ -155,10 +155,12 @@ pub(crate) struct Repl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
     pub(crate) meta_cmds: MetaCmdsMap<F, C1, C2>,
     pub(crate) lang_symbols: FxHashSet<Symbol>,
     pub(crate) lurkscript: bool,
+    /// Use the graphql backend when running microchain operations
+    pub(crate) linera: bool,
 }
 
 impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
-    pub(crate) fn new(lang: Lang<BabyBear, C2>, lurkscript: bool) -> Self {
+    pub(crate) fn new(lang: Lang<BabyBear, C2>, lurkscript: bool, linera: bool) -> Self {
         let (toplevel, mut zstore, lang_symbols) = build_lurk_toplevel(lang);
         let func_indices = FuncIndices::new(&toplevel);
         let env = zstore.intern_empty_env();
@@ -172,6 +174,7 @@ impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
             meta_cmds: meta_cmds(),
             lang_symbols,
             lurkscript,
+            linera,
         }
     }
 }
@@ -179,8 +182,8 @@ impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
 impl Repl<BabyBear, LurkChip, NoChip> {
     /// Creates a REPL instance for the empty Lang with `C2 = NoChip`
     #[inline]
-    pub(crate) fn new_native(lurkscript: bool) -> Self {
-        Self::new(Lang::empty(), lurkscript)
+    pub(crate) fn new_native(lurkscript: bool, linera: bool) -> Self {
+        Self::new(Lang::empty(), lurkscript, linera)
     }
 }
 
@@ -540,38 +543,40 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         self.handle_non_meta_with_env(expr, &env)
     }
 
-    fn intern_syntax_slice(
+    async fn intern_syntax_slice(
         &mut self,
         slice: &[Syntax<F>],
         file_dir: &Utf8Path,
     ) -> Result<Vec<ZPtr<F>>> {
-        slice
-            .iter()
-            .map(|x| self.intern_syntax(x, file_dir))
-            .collect()
+        let mut result = Vec::with_capacity(slice.len());
+        for syntax in slice {
+            result.push(self.intern_syntax(syntax, file_dir).await?);
+        }
+        Ok(result)
     }
-
-    fn intern_syntax_env(
+    
+    async fn intern_syntax_env(
         &mut self,
         env: &[(Arc<Symbol>, Syntax<F>)],
         file_dir: &Utf8Path,
     ) -> Result<Vec<(ZPtr<F>, ZPtr<F>)>> {
-        env.iter()
-            .map(|(sym, val)| {
-                let sym = self.zstore.intern_symbol(sym, &self.lang_symbols);
-                let val = self.intern_syntax(val, file_dir)?;
-                Ok((sym, val))
-            })
-            .collect()
+        let mut result = Vec::with_capacity(env.len());
+        for (sym, val) in env {
+            let sym = self.zstore.intern_symbol(sym, &self.lang_symbols);
+            let val = self.intern_syntax(val, file_dir).await?;
+            result.push((sym, val));
+        }
+        Ok(result)
     }
 
-    fn intern_syntax(&mut self, syn: &Syntax<F>, file_dir: &Utf8Path) -> Result<ZPtr<F>> {
+    async fn intern_syntax(&mut self, syn: &Syntax<F>, file_dir: &Utf8Path) -> Result<ZPtr<F>> {
         let zptr = match syn {
             Syntax::Meta(_, sym, args) => {
-                let zptrs = self.intern_syntax_slice(args, file_dir)?;
-                let args = self.zstore.intern_list(zptrs);
+                let args_vec = Box::pin(self.intern_syntax_slice(args, file_dir)).await?;
+                let args = self.zstore.intern_list(args_vec);
+    
                 if let Some(meta_cmd) = self.meta_cmds.get(sym) {
-                    (meta_cmd.run)(self, &args, file_dir)?
+                    (meta_cmd.run)(self, &args, file_dir).await?
                 } else {
                     bail!("Invalid meta command: {sym}")
                 }
@@ -585,20 +590,20 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             Syntax::String(_, s) => self.zstore.intern_string(s),
             Syntax::Symbol(_, s) => self.zstore.intern_symbol(s, &self.lang_symbols),
             Syntax::List(_, xs) => {
-                let zptrs = self.intern_syntax_slice(xs, file_dir)?;
+                let zptrs = Box::pin(self.intern_syntax_slice(xs, file_dir)).await?;
                 self.zstore.intern_list(zptrs)
             }
             Syntax::Improper(_, xs, y) => {
-                let zptrs = self.intern_syntax_slice(xs, file_dir)?;
-                let y = self.intern_syntax(y, file_dir)?;
+                let zptrs = Box::pin(self.intern_syntax_slice(xs, file_dir)).await?;
+                let y = Box::pin(self.intern_syntax(y, file_dir)).await?;
                 self.zstore.intern_list_full(zptrs, y)
             }
             Syntax::Quote(_, x) => {
-                let x = self.intern_syntax(x, file_dir)?;
+                let x = Box::pin(self.intern_syntax(x, file_dir)).await?;
                 self.zstore.intern_list([*self.zstore.quote(), x])
             }
             Syntax::Env(_, env) => {
-                let zptrs = self.intern_syntax_env(env, file_dir)?;
+                let zptrs = Box::pin(self.intern_syntax_env(env, file_dir)).await?;
                 let empty_env = self.zstore.intern_empty_env();
                 zptrs.into_iter().rev().fold(empty_env, |acc, (sym, val)| self.zstore.intern_env(sym, val, acc))
             }
@@ -614,7 +619,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
     ///     * `zptr: ZPtr<F>` is the pointer to the interned Lurk expression
     ///     * `meta: bool` tells whether the parsed code was a meta command or not
     #[allow(clippy::type_complexity)]
-    fn process<'a>(
+    async fn process<'a>(
         &mut self,
         input: Span<'a>,
         file_dir: &Utf8Path,
@@ -627,17 +632,17 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             .get_from_offset()
             .expect("Parsed syntax should have its Pos set");
         let meta = matches!(syn, Syntax::Meta(..));
-        let zptr = self.intern_syntax(&syn, file_dir)?;
+        let zptr = self.intern_syntax(&syn, file_dir).await?;
         Ok(Some((offset, rest, zptr, meta)))
     }
 
-    fn handle_form<'a>(
+    async fn handle_form<'a>(
         &mut self,
         input: Span<'a>,
         file_dir: &Utf8Path,
         demo: bool,
     ) -> Result<Option<Span<'a>>> {
-        let Some((syntax_start, mut new_input, zptr, meta)) = self.process(input, file_dir)? else {
+        let Some((syntax_start, mut new_input, zptr, meta)) = self.process(input, file_dir).await? else {
             return Ok(None);
         };
         if demo {
@@ -668,7 +673,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         Ok(Some(new_input))
     }
 
-    pub(crate) fn load_file(&mut self, file_path: &Utf8Path, demo: bool) -> Result<()> {
+    pub(crate) async fn load_file(&mut self, file_path: &Utf8Path, demo: bool) -> Result<()> {
         let Some(file_dir) = file_path.parent() else {
             bail!("Can't get the parent of {file_path}");
         };
@@ -701,7 +706,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
 
         let mut input = Span::new(&input);
         loop {
-            match self.handle_form(input, file_dir, demo) {
+            match self.handle_form(input, file_dir, demo).await {
                 Ok(None) => return Ok(()),
                 Ok(Some(new_input)) => input = new_input,
                 Err(e) => return Err(e),
@@ -719,7 +724,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         }
     }
 
-    pub(crate) fn run(&mut self) -> Result<()> {
+    pub(crate) async fn run(&mut self) -> Result<()> {
         println!("Lurk REPL welcomes you.");
 
         let config = Self::init_config();
@@ -758,7 +763,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
                     }
 
                     while !line.trim_end().is_empty() {
-                        match self.process(Span::new(&line), &pwd_path) {
+                        match self.process(Span::new(&line), &pwd_path).await {
                             Ok(Some((_, rest, zptr, meta))) => {
                                 if meta {
                                     println!("{}", self.fmt(&zptr));

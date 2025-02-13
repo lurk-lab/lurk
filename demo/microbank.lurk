@@ -216,6 +216,3 @@
 
 ; !(defq s13 !(transition s7 :audit))
 ; !(assert-eq  :pass (car s13))
-
-!(defq id !(microchain-start "127.0.0.1:8081" s0))
-!(defq s1 !(microchain-transition "127.0.0.1:8081" id s0 :about))
