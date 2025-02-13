@@ -33,19 +33,18 @@ def(assert_, x => x || error(assertionFailure.key, nil))
 def(ensure, x => x || fail())
 
 defrec(member, function (x, l) {
-  if (l) {
-    x === car(l) ? x : member(x, cdr(l))
-  }})
+  l && (x === car(l) ? x : member(x, cdr(l)))
+})
 
 def(position, (elt, l) => {
   function aux(l) {
     eq(car(l), elt) ? 0 : 1 + aux(cdr(l))
   }
-  if (l) aux(l)
+  l && aux(l)
 })
 
 defrec(nth, function (n, l) {
-  if(l) (n === 0 ? car(l) : nth(n-1, cdr(l)))
+  l && (n === 0 ? car(l) : nth(n-1, cdr(l)))
 })
 
 defrec(nthCdr, (n, l) => n === 0 ? l : cdr(nthCdr(n-1, l)))
@@ -101,18 +100,16 @@ def(foldProperties, function (f, acc, plist) {
 
 def(mapProperties, function(f, plist) {
   function aux(plist) {
-    if (cdr(plist)) {
+    cdr(plist) &&
       cons(f(cadr(plist)), aux(cddr(plist)))
-    }
   }
   aux(plist)
 })
 
 def(assoc, function(item, alist) {
   function aux(alist) {
-    if (alist) {
+    alist &&
       (caar(alist) === item ? car(alist) : aux(cdr(alist)))
-    }
   }
   aux(alist)
 })
@@ -128,9 +125,8 @@ defrec(reverse, l => {
 
 def(zip, function(a, b) {
   function aux(a, b) {
-    if (a)
-      if (b)
-        cons(cons(car(a), car(b)), aux(cdr(a), cdr(b)))
+    a && b &&
+      cons(cons(car(a), car(b)), aux(cdr(a), cdr(b)))
   }
   aux(a, b)
 })
@@ -161,12 +157,10 @@ def(permute, function (l, seed) {
 defrec(expt, function(b, e) {
   if (e === 0) {
     1
+  } else if (e % 2 === 1) { // e is odd
+    b * expt(b*b, (e-1)/2)
   } else {
-    if (e % 2 === 1) { // e is odd
-      b * expt(b*b, (e-1)/2)
-      } else {
-        expt(b*b, e/2)
-      }
+    expt(b*b, e/2)
   }
 })
 
