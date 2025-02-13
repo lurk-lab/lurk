@@ -367,7 +367,7 @@ test!(test_env_builtin3, "(env (list 'a 1 2))", |z| {
     let val = z.intern_list([one, two]);
     z.intern_env(a, val, empty_env)
 });
-test!(test_env_literal, "{ a: 1, b: 2 }", |z| {
+test!(test_env_literal, "{ b: 2, a: 1 }", |z| {
     let empty_env = z.intern_empty_env();
     let b = z.intern_symbol_no_lang(&user_sym("b"));
     let two = z.intern_u64(2);

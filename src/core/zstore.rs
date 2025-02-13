@@ -878,6 +878,7 @@ impl<F: Field, C: Chipset<F>> ZStore<F, C> {
                 let pairs_str = self
                     .fetch_env(zptr)
                     .iter()
+                    .rev()
                     .map(|(sym, val)| {
                         format!(
                             "{}: {}",
