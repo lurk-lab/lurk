@@ -11,6 +11,7 @@ pub mod repl;
 #[cfg(test)]
 mod tests;
 mod zdag;
+mod graphql_client;
 
 use anyhow::{bail, Result};
 use camino::Utf8PathBuf;
@@ -44,6 +45,9 @@ struct ReplArgs {
 
     #[arg(long)]
     lurkscript: bool,
+
+    #[arg(long)]
+    linera: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -53,6 +57,9 @@ struct ReplCli {
 
     #[arg(long)]
     lurkscript: bool,
+
+    #[arg(long)]
+    linera: bool,
 }
 
 #[derive(Args, Debug)]
@@ -94,10 +101,12 @@ impl ReplArgs {
         let Self {
             preload,
             lurkscript,
+            linera,
         } = self;
         ReplCli {
             preload,
             lurkscript,
+            linera,
         }
     }
 }
@@ -118,29 +127,29 @@ impl LoadArgs {
 }
 
 impl Cli {
-    fn run(self) -> Result<()> {
+    async fn run(self) -> Result<()> {
         match self.command {
-            Command::Repl(repl_args) => repl_args.into_cli().run(),
-            Command::Load(load_args) => load_args.into_cli().run(),
+            Command::Repl(repl_args) => repl_args.into_cli().run().await,
+            Command::Load(load_args) => load_args.into_cli().run().await,
             Command::Microchain(microchain_args) => microchain_args.run(),
         }
     }
 }
 
 impl ReplCli {
-    fn run(&self) -> Result<()> {
-        let mut repl = Repl::new_native(self.lurkscript);
+    async fn run(&self) -> Result<()> {
+        let mut repl = Repl::new_native(self.lurkscript, self.linera);
         if let Some(lurk_file) = &self.preload {
-            repl.load_file(lurk_file, false)?;
+            repl.load_file(lurk_file, false).await?;
         }
-        repl.run()
+        repl.run().await
     }
 }
 
 impl LoadCli {
-    fn run(&self) -> Result<()> {
-        let mut repl = Repl::new_native(false);
-        repl.load_file(&self.lurk_file, self.demo)?;
+    async fn run(&self) -> Result<()> {
+        let mut repl = Repl::new_native(false, false);
+        repl.load_file(&self.lurk_file, self.demo).await?;
         if self.prove {
             repl.prove_last_reduction()?;
         }
@@ -148,14 +157,14 @@ impl LoadCli {
     }
 }
 
-pub fn run() -> Result<()> {
+pub async fn run() -> Result<()> {
     set_config(Config::default());
     if let Ok(cli) = Cli::try_parse() {
-        cli.run()
+        cli.run().await
     } else if let Ok(repl_cli) = ReplCli::try_parse() {
-        repl_cli.run()
+        repl_cli.run().await
     } else if let Ok(load_cli) = LoadCli::try_parse() {
-        load_cli.run()
+        load_cli.run().await
     } else {
         // force printing help
         Cli::parse();

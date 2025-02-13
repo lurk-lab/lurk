@@ -1,0 +1,3 @@
+mutation MicrochainTransition($chainProof: String!) {
+  transition(chainProof: $chainProof)
+}

@@ -1,0 +1,3 @@
+mutation PublishDataBlob($chainId: ChainId!, $bytes: [Int!]!) {
+    publishDataBlob(chainId: $chainId, bytes: $bytes)
+}

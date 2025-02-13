@@ -5,7 +5,7 @@ use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, PrimeField32};
 use rustc_hash::FxHashMap;
 use sp1_stark::StarkGenericConfig;
-use std::net::TcpStream;
+use std::{future::Future, net::TcpStream, pin::Pin};
 
 use crate::{
     core::{
@@ -22,14 +22,7 @@ use crate::{
 };
 
 use super::{
-    comm_data::CommData,
-    debug::debug_mode,
-    lurk_data::LurkData,
-    microchain::{read_data, write_data, CallableData, ChainState, Request, Response},
-    paths::{commits_dir, proofs_dir},
-    proofs::{get_verifier_version, CachedProof, ChainProof, OpaqueChainProof, ProtocolProof},
-    rdg::rand_digest,
-    repl::Repl,
+    comm_data::CommData, debug::debug_mode, graphql_client, lurk_data::LurkData, microchain::{read_data, write_data, CallableData, ChainState, Request, Response}, paths::{commits_dir, proofs_dir}, proofs::{get_verifier_version, CachedProof, ChainProof, OpaqueChainProof, ProtocolProof}, rdg::rand_digest, repl::Repl
 };
 
 #[allow(clippy::type_complexity)]
@@ -40,8 +33,11 @@ pub(crate) struct MetaCmd<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
     format: &'static str,
     example: &'static [&'static str],
     returns: &'static str,
-    pub(crate) run:
-        fn(repl: &mut Repl<F, C1, C2>, args: &ZPtr<F>, file_dir: &Utf8Path) -> Result<ZPtr<F>>,
+    pub(crate) run: for<'a> fn(
+        repl: &'a mut Repl<F, C1, C2>,
+        args: &'a ZPtr<F>,
+        file_dir: &'a Utf8Path,
+    ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>>,
 }
 
 pub(crate) type MetaCmdsMap<F, C1, C2> = FxHashMap<Symbol, MetaCmd<F, C1, C2>>;
@@ -55,16 +51,18 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(assert t)", "!(assert (eq 3 (+ 1 2)))"],
         returns: "t",
         run: |repl, args, _dir| {
-            let [&expr] = repl.take(args)?;
-            let (result, _) = repl.reduce_aux(&expr)?;
-            if result.tag == Tag::Err {
-                bail!("Reduction error: {}", repl.fmt(&result));
-            }
-            if &result == repl.zstore.nil() {
-                eprintln!("assert failed. {} evaluates to nil", repl.fmt(&expr));
-                std::process::exit(1);
-            }
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                let [&expr] = repl.take(args)?;
+                let (result, _) = repl.reduce_aux(&expr)?;
+                if result.tag == Tag::Err {
+                    bail!("Reduction error: {}", repl.fmt(&result));
+                }
+                if &result == repl.zstore.nil() {
+                    eprintln!("assert failed. {} evaluates to nil", repl.fmt(&expr));
+                    std::process::exit(1);
+                }
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -76,26 +74,28 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(assert-eq 3 (+ 1 2))"],
         returns: "t",
         run: |repl, args, _dir| {
-            let [&expr1, &expr2] = repl.take(args)?;
-            let (result1, _) = repl.reduce_aux(&expr1)?;
-            if result1.tag == Tag::Err {
-                bail!("LHS reduction error: {}", repl.fmt(&result1));
-            }
-            let (result2, _) = repl.reduce_aux(&expr2)?;
-            if result2.tag == Tag::Err {
-                bail!("RHS reduction error: {}", repl.fmt(&result2));
-            }
-            if result1 != result2 {
-                repl.memoize_dag(&result1);
-                repl.memoize_dag(&result2);
-                eprintln!(
-                    "assert-eq failed. {} ≠ {}",
-                    repl.fmt(&result1),
-                    repl.fmt(&result2)
-                );
-                std::process::exit(1);
-            }
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                let [&expr1, &expr2] = repl.take(args)?;
+                let (result1, _) = repl.reduce_aux(&expr1)?;
+                if result1.tag == Tag::Err {
+                    bail!("LHS reduction error: {}", repl.fmt(&result1));
+                }
+                let (result2, _) = repl.reduce_aux(&expr2)?;
+                if result2.tag == Tag::Err {
+                    bail!("RHS reduction error: {}", repl.fmt(&result2));
+                }
+                if result1 != result2 {
+                    repl.memoize_dag(&result1);
+                    repl.memoize_dag(&result2);
+                    eprintln!(
+                        "assert-eq failed. {} ≠ {}",
+                        repl.fmt(&result1),
+                        repl.fmt(&result2)
+                    );
+                    std::process::exit(1);
+                }
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -107,16 +107,18 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(assert-error (1 1))"],
         returns: "t",
         run: |repl, args, _dir| {
-            let [&expr] = repl.take(args)?;
-            let (result, _) = repl.reduce_aux(&expr)?;
-            if result.tag != Tag::Err {
-                eprintln!(
-                    "assert-error failed. {} doesn't result on evaluation error.",
-                    repl.fmt(&expr)
-                );
-                std::process::exit(1);
-            }
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                let [&expr] = repl.take(args)?;
+                let (result, _) = repl.reduce_aux(&expr)?;
+                if result.tag != Tag::Err {
+                    eprintln!(
+                        "assert-error failed. {} doesn't result on evaluation error.",
+                        repl.fmt(&expr)
+                    );
+                    std::process::exit(1);
+                }
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -132,24 +134,26 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(assert-emitted '(1 2) (begin (emit 1) (emit 2)))"],
         returns: "t",
         run: |repl, args, _dir| {
-            let [&expected_expr, &expr] = repl.take(args)?;
-            let (expected, _) = repl.reduce_aux(&expected_expr)?;
-            let (result, emitted) = repl.reduce_aux(&expr)?;
-            if result.tag == Tag::Err {
-                bail!("Reduction error: {}", repl.fmt(&result));
-            }
-            let emitted = repl.zstore.intern_list(emitted);
-            if expected != emitted {
-                repl.memoize_dag(&expected);
-                // DAG for `emitted` has already been memoized
-                eprintln!(
-                    "assert-emitted failed. Expected {} but got {}",
-                    repl.fmt(&expected),
-                    repl.fmt(&emitted)
-                );
-                std::process::exit(1);
-            }
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                let [&expected_expr, &expr] = repl.take(args)?;
+                let (expected, _) = repl.reduce_aux(&expected_expr)?;
+                let (result, emitted) = repl.reduce_aux(&expr)?;
+                if result.tag == Tag::Err {
+                    bail!("Reduction error: {}", repl.fmt(&result));
+                }
+                let emitted = repl.zstore.intern_list(emitted);
+                if expected != emitted {
+                    repl.memoize_dag(&expected);
+                    // DAG for `emitted` has already been memoized
+                    eprintln!(
+                        "assert-emitted failed. Expected {} but got {}",
+                        repl.fmt(&expected),
+                        repl.fmt(&emitted)
+                    );
+                    std::process::exit(1);
+                }
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -178,15 +182,17 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["(+ 1 1)", "!(debug)", "!(debug (+ 1 1))"],
         returns: "t",
         run: |repl, args, _dir| {
-            if args != repl.zstore.nil() {
-                let [&expr] = repl.take(args)?;
-                let result = repl.handle_non_meta(&expr);
-                debug_mode(&repl.format_debug_data())?;
-                result.map(|_| ())?;
-            } else {
-                debug_mode(&repl.format_debug_data())?;
-            }
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                if args != repl.zstore.nil() {
+                    let [&expr] = repl.take(args)?;
+                    let result = repl.handle_non_meta(&expr);
+                    debug_mode(&repl.format_debug_data())?;
+                    result.map(|_| ())?;
+                } else {
+                    debug_mode(&repl.format_debug_data())?;
+                }
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -205,11 +211,13 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(load \"my_file.lurk\")"],
         returns: "t",
         run: |repl, args, path| {
-            let [file_name_zptr] = repl.take(args)?;
-            Self::validate_path_type(file_name_zptr)?;
-            let file_name = repl.zstore.fetch_string(file_name_zptr);
-            repl.load_file(&path.join(file_name), false)?;
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                let [file_name_zptr] = repl.take(args)?;
+                Self::validate_path_type(file_name_zptr)?;
+                let file_name = repl.zstore.fetch_string(file_name_zptr);
+                repl.load_file(&path.join(file_name), false).await?;
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -221,10 +229,12 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(defq foo (1 . 2))"],
         returns: "The binding symbol",
         run: |repl, args, _dir| {
-            let [&sym, &val] = repl.take(args)?;
-            Self::validate_binding_symbol(repl, &sym)?;
-            repl.bind(sym, val);
-            Ok(sym)
+            Box::pin(async move {
+                let [&sym, &val] = repl.take(args)?;
+                Self::validate_binding_symbol(repl, &sym)?;
+                repl.bind(sym, val);
+                Ok(sym)
+            })
         },
     };
 
@@ -236,15 +246,17 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(def foo (lambda () 123))"],
         returns: "The binding symbol",
         run: |repl, args, _dir| {
-            let [&sym, &expr] = repl.take(args)?;
-            Self::validate_binding_symbol(repl, &sym)?;
-            let (val, _) = repl.reduce_aux(&expr)?;
-            if val.tag == Tag::Err {
-                bail!(repl.fmt(&val));
-            }
-            repl.memoize_dag(&val);
-            repl.bind(sym, val);
-            Ok(sym)
+            Box::pin(async move {
+                let [&sym, &expr] = repl.take(args)?;
+                Self::validate_binding_symbol(repl, &sym)?;
+                let (val, _) = repl.reduce_aux(&expr)?;
+                if val.tag == Tag::Err {
+                    bail!(repl.fmt(&val));
+                }
+                repl.memoize_dag(&val);
+                repl.bind(sym, val);
+                Ok(sym)
+            })
         },
     };
 
@@ -262,24 +274,26 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The binding symbol",
         run: |repl, args, _dir| {
-            let [&sym, _] = repl.take(args)?;
-            let letrec = repl
-                .zstore
-                .intern_symbol(&builtin_sym("letrec"), &repl.lang_symbols);
-            let bindings = repl.zstore.intern_list([*args]);
-            let current_env = repl
-                .zstore
-                .intern_symbol(&builtin_sym("current-env"), &repl.lang_symbols);
-            let current_env_call = repl.zstore.intern_list([current_env]);
-            let expr = repl
-                .zstore
-                .intern_list([letrec, bindings, current_env_call]);
-            let (output, _) = repl.reduce_aux(&expr)?;
-            if output.tag != Tag::Env {
-                bail!("Reduction resulted in {}", repl.fmt(&output));
-            }
-            repl.env = output;
-            Ok(sym)
+            Box::pin(async move {
+                let [&sym, _] = repl.take(args)?;
+                let letrec = repl
+                    .zstore
+                    .intern_symbol(&builtin_sym("letrec"), &repl.lang_symbols);
+                let bindings = repl.zstore.intern_list([*args]);
+                let current_env = repl
+                    .zstore
+                    .intern_symbol(&builtin_sym("current-env"), &repl.lang_symbols);
+                let current_env_call = repl.zstore.intern_list([current_env]);
+                let expr = repl
+                    .zstore
+                    .intern_list([letrec, bindings, current_env_call]);
+                let (output, _) = repl.reduce_aux(&expr)?;
+                if output.tag != Tag::Env {
+                    bail!("Reduction resulted in {}", repl.fmt(&output));
+                }
+                repl.env = output;
+                Ok(sym)
+            })
         },
     };
 
@@ -306,15 +320,17 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(def a 1)", "!(update a (lambda (x) (+ x 1)))"],
         returns: "The symbol whose bound value was updated",
         run: |repl, args, _dir| {
-            let [&sym, &fun] = repl.take(args)?;
-            Self::validate_binding_symbol(repl, &sym)?;
-            let expr = repl.zstore.intern_list([fun, sym]);
-            let (res, _) = repl.reduce_aux(&expr)?;
-            if res.tag == Tag::Err {
-                bail!("Reduction error: {}", repl.fmt(&res));
-            }
-            repl.bind(sym, res);
-            Ok(sym)
+            Box::pin(async move {
+                let [&sym, &fun] = repl.take(args)?;
+                Self::validate_binding_symbol(repl, &sym)?;
+                let expr = repl.zstore.intern_list([fun, sym]);
+                let (res, _) = repl.reduce_aux(&expr)?;
+                if res.tag == Tag::Err {
+                    bail!("Reduction error: {}", repl.fmt(&res));
+                }
+                repl.bind(sym, res);
+                Ok(sym)
+            })
         },
     };
 
@@ -326,8 +342,10 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(def a 1)", "(current-env)", "!(clear)", "(current-env)"],
         returns: "t",
         run: |repl, _args, _dir| {
-            repl.env = repl.zstore.intern_empty_env();
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                repl.env = repl.zstore.intern_empty_env();
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -339,13 +357,15 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(set-env (eval '(let ((a 1)) (current-env))))", "a"],
         returns: "t",
         run: |repl, args, _dir| {
-            let [&env_expr] = repl.take(args)?;
-            let (env, _) = repl.reduce_aux(&env_expr)?;
-            if env.tag != Tag::Env {
-                bail!("Value must be an environment");
-            }
-            repl.env = env;
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                let [&env_expr] = repl.take(args)?;
+                let (env, _) = repl.reduce_aux(&env_expr)?;
+                if env.tag != Tag::Env {
+                    bail!("Value must be an environment");
+                }
+                repl.env = env;
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -357,20 +377,22 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(erase-from-env foo bar)"],
         returns: "t",
         run: |repl, args, _dir| {
-            repl.memoize_env_dag();
-            let (args_vec, _) = repl.zstore.fetch_list(args);
-            let new_env_vec = repl
-                .zstore
-                .fetch_env(&repl.env)
-                .into_iter()
-                .filter(|(var, _)| !args_vec.contains(var))
-                .map(|(var, val)| (*var, *val))
-                .collect::<Vec<_>>();
-            repl.env = repl.zstore.intern_empty_env();
-            for (var, val) in new_env_vec.into_iter().rev() {
-                repl.bind(var, val);
-            }
-            Ok(*repl.zstore.t())
+            Box::pin(async move {
+                repl.memoize_env_dag();
+                let (args_vec, _) = repl.zstore.fetch_list(args);
+                let new_env_vec = repl
+                    .zstore
+                    .fetch_env(&repl.env)
+                    .into_iter()
+                    .filter(|(var, _)| !args_vec.contains(var))
+                    .map(|(var, val)| (*var, *val))
+                    .collect::<Vec<_>>();
+                repl.env = repl.zstore.intern_empty_env();
+                for (var, val) in new_env_vec.into_iter().rev() {
+                    repl.bind(var, val);
+                }
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -411,12 +433,14 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(hide (bignum (commit 123)) 42)", "!(hide #0x123 42)"],
         returns: "The resulting commitment",
         run: |repl, args, _dir| {
-            let [&secret_expr, &payload_expr] = repl.take(args)?;
-            let (secret, _) = repl.reduce_aux(&secret_expr)?;
-            if secret.tag != Tag::BigNum {
-                bail!("Secret must reduce to a bignum");
-            }
-            Self::hide(secret.digest, &payload_expr, repl)
+            Box::pin(async move {
+                let [&secret_expr, &payload_expr] = repl.take(args)?;
+                let (secret, _) = repl.reduce_aux(&secret_expr)?;
+                if secret.tag != Tag::BigNum {
+                    bail!("Secret must reduce to a bignum");
+                }
+                Self::hide(secret.digest, &payload_expr, repl)
+            })
         },
     };
 
@@ -428,10 +452,12 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["(hide !(rand) 42)"],
         returns: "The random big num",
         run: |repl, args, _dir| {
-            if args != repl.zstore.nil() {
-                bail!("No arguments are accepted");
-            }
-            Ok(repl.zstore.intern_big_num(rand_digest()))
+            Box::pin(async move {
+                if args != repl.zstore.nil() {
+                    bail!("No arguments are accepted");
+                }
+                Ok(repl.zstore.intern_big_num(rand_digest()))
+            })
         },
     };
 
@@ -447,8 +473,10 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(commit 42)"],
         returns: "The resulting commitment",
         run: |repl, args, _dir| {
-            let [&payload_expr] = repl.take(args)?;
-            Self::hide([F::zero(); DIGEST_SIZE], &payload_expr, repl)
+            Box::pin(async move {
+                let [&payload_expr] = repl.take(args)?;
+                Self::hide([F::zero(); DIGEST_SIZE], &payload_expr, repl)
+            })
         },
     };
 
@@ -472,12 +500,14 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The commitment payload",
         run: |repl, args, _dir| {
-            let [&expr] = repl.take(args)?;
-            let (result, _) = repl.reduce_aux(&expr)?;
-            match result.tag {
-                Tag::BigNum | Tag::Comm => Self::fetch_comm_data(repl, &result.digest),
-                _ => bail!("Expected a commitment or a BigNum"),
-            }
+            Box::pin(async move {
+                let [&expr] = repl.take(args)?;
+                let (result, _) = repl.reduce_aux(&expr)?;
+                match result.tag {
+                    Tag::BigNum | Tag::Comm => Self::fetch_comm_data(repl, &result.digest),
+                    _ => bail!("Expected a commitment or a BigNum"),
+                }
+            })
         },
     };
 
@@ -537,9 +567,11 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The call result",
         run: |repl, args, _dir| {
-            let env = repl.env;
-            let (res, _) = Self::call(repl, args, &env)?;
-            Ok(res)
+            Box::pin(async move {
+                let env = repl.env;
+                let (res, _) = Self::call(repl, args, &env)?;
+                Ok(res)
+            })
         },
     };
 
@@ -578,10 +610,12 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The chained result",
         run: |repl, args, _dir| {
-            let env = repl.zstore.intern_empty_env();
-            let (cons, _) = Self::call(repl, args, &env)?;
-            Self::persist_chain_comm(repl, &cons)?;
-            Ok(cons)
+            Box::pin(async move {
+                let env = repl.zstore.intern_empty_env();
+                let (cons, _) = Self::call(repl, args, &env)?;
+                Self::persist_chain_comm(repl, &cons)?;
+                Ok(cons)
+            })
         },
     };
 
@@ -613,10 +647,12 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(defq new-state !(transition old-state input))"],
         returns: "The chained result",
         run: |repl, args, _dir| {
-            let (&current_state_expr, &call_args) = repl.car_cdr(args);
-            let (cons, _) = Self::transition_call(repl, &current_state_expr, call_args)?;
-            Self::persist_chain_comm(repl, &cons)?;
-            Ok(cons)
+            Box::pin(async move {
+                let (&current_state_expr, &call_args) = repl.car_cdr(args);
+                let (cons, _) = Self::transition_call(repl, &current_state_expr, call_args)?;
+                Self::persist_chain_comm(repl, &cons)?;
+                Ok(cons)
+            })
         },
     };
 
@@ -628,19 +664,21 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(defpackage abc)"],
         returns: "The symbol naming the new package",
         run: |repl, args, _dir| {
-            // TODO: handle args
-            let (name, _args) = repl.car_cdr(args);
-            let name = match name.tag {
-                Tag::Str => repl
-                    .state
-                    .borrow_mut()
-                    .intern(repl.zstore.fetch_string(name)),
-                Tag::Sym => repl.zstore.fetch_symbol(name).into(),
-                _ => bail!("Package name must be a string or a symbol"),
-            };
-            let name_zptr = repl.zstore.intern_symbol(&name, &repl.lang_symbols);
-            repl.state.borrow_mut().add_package(Package::new(name));
-            Ok(name_zptr)
+            Box::pin(async move {
+                // TODO: handle args
+                let (name, _args) = repl.car_cdr(args);
+                let name = match name.tag {
+                    Tag::Str => repl
+                        .state
+                        .borrow_mut()
+                        .intern(repl.zstore.fetch_string(name)),
+                    Tag::Sym => repl.zstore.fetch_symbol(name).into(),
+                    _ => bail!("Package name must be a string or a symbol"),
+                };
+                let name_zptr = repl.zstore.intern_symbol(&name, &repl.lang_symbols);
+                repl.state.borrow_mut().add_package(Package::new(name));
+                Ok(name_zptr)
+            })
         },
     };
 
@@ -652,27 +690,29 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &[],
         returns: "t",
         run: |repl, args, _dir| {
-            // TODO: handle pkg
-            let (mut symbols, _pkg) = repl.car_cdr(args);
-            if symbols.tag == Tag::Sym {
-                let sym = SymbolRef::new(repl.zstore.fetch_symbol(symbols));
-                repl.state.borrow_mut().import(&[sym])?;
-            } else {
-                let mut symbols_vec = vec![];
-                loop {
-                    {
-                        let (head, tail) = repl.car_cdr(symbols);
-                        let sym = repl.zstore.fetch_symbol(head);
-                        symbols_vec.push(SymbolRef::new(sym));
-                        if tail == repl.zstore.nil() {
-                            break;
+            Box::pin(async move {
+                // TODO: handle pkg
+                let (mut symbols, _pkg) = repl.car_cdr(args);
+                if symbols.tag == Tag::Sym {
+                    let sym = SymbolRef::new(repl.zstore.fetch_symbol(symbols));
+                    repl.state.borrow_mut().import(&[sym])?;
+                } else {
+                    let mut symbols_vec = vec![];
+                    loop {
+                        {
+                            let (head, tail) = repl.car_cdr(symbols);
+                            let sym = repl.zstore.fetch_symbol(head);
+                            symbols_vec.push(SymbolRef::new(sym));
+                            if tail == repl.zstore.nil() {
+                                break;
+                            }
+                            symbols = tail;
                         }
-                        symbols = tail;
                     }
+                    repl.state.borrow_mut().import(&symbols_vec)?;
                 }
-                repl.state.borrow_mut().import(&symbols_vec)?;
-            }
-            Ok(*repl.zstore.t())
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -690,22 +730,24 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "t",
         run: |repl, args, _dir| {
-            let [arg] = repl.take(args)?;
-            match arg.tag {
-                Tag::Str => {
-                    let name = repl.zstore.fetch_string(arg);
-                    let package_name = repl.state.borrow_mut().intern(name);
-                    repl.state.borrow_mut().set_current_package(package_name)?;
+            Box::pin(async move {
+                let [arg] = repl.take(args)?;
+                match arg.tag {
+                    Tag::Str => {
+                        let name = repl.zstore.fetch_string(arg);
+                        let package_name = repl.state.borrow_mut().intern(name);
+                        repl.state.borrow_mut().set_current_package(package_name)?;
+                    }
+                    Tag::Sym => {
+                        let package_name = repl.zstore.fetch_symbol(arg);
+                        repl.state
+                            .borrow_mut()
+                            .set_current_package(package_name.into())?;
+                    }
+                    _ => bail!("Expected string or symbol. Got {}", repl.fmt(arg)),
                 }
-                Tag::Sym => {
-                    let package_name = repl.zstore.fetch_symbol(arg);
-                    repl.state
-                        .borrow_mut()
-                        .set_current_package(package_name.into())?;
-                }
-                _ => bail!("Expected string or symbol. Got {}", repl.fmt(arg)),
-            }
-            Ok(*repl.zstore.t())
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -717,19 +759,21 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(dump-expr (+ 1 1) \"my_file\")"],
         returns: "The persisted data",
         run: |repl, args, _dir| {
-            let [&expr, &path] = repl.take(args)?;
-            Self::validate_path_type(&path)?;
-            let (result, _) = repl.reduce_aux(&expr)?;
-            if result.tag == Tag::Err {
-                bail!("Reduction error: {}", repl.fmt(&result));
-            }
-            let path_str = repl.zstore.fetch_string(&path);
-            repl.memoize_dag(&result);
-            let lurk_data = LurkData::new(result, &repl.zstore);
-            let lurk_data_bytes = bincode::serialize(&lurk_data)?;
-            std::fs::write(&path_str, lurk_data_bytes)?;
-            println!("Data persisted on file `{path_str}`");
-            Ok(result)
+            Box::pin(async move {
+                let [&expr, &path] = repl.take(args)?;
+                Self::validate_path_type(&path)?;
+                let (result, _) = repl.reduce_aux(&expr)?;
+                if result.tag == Tag::Err {
+                    bail!("Reduction error: {}", repl.fmt(&result));
+                }
+                let path_str = repl.zstore.fetch_string(&path);
+                repl.memoize_dag(&result);
+                let lurk_data = LurkData::new(result, &repl.zstore);
+                let lurk_data_bytes = bincode::serialize(&lurk_data)?;
+                std::fs::write(&path_str, lurk_data_bytes)?;
+                println!("Data persisted on file `{path_str}`");
+                Ok(result)
+            })
         },
     };
 
@@ -744,13 +788,15 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The loaded data",
         run: |repl, args, _dir| {
-            let [&path] = repl.take(args)?;
-            Self::validate_path_type(&path)?;
-            let path_str = repl.zstore.fetch_string(&path);
-            let lurk_data_bytes = std::fs::read(&path_str)?;
-            let lurk_data: LurkData<F> = bincode::deserialize(&lurk_data_bytes)?;
-            let payload = lurk_data.populate_zstore(&mut repl.zstore);
-            Ok(payload)
+            Box::pin(async move {
+                let [&path] = repl.take(args)?;
+                Self::validate_path_type(&path)?;
+                let path_str = repl.zstore.fetch_string(&path);
+                let lurk_data_bytes = std::fs::read(&path_str)?;
+                let lurk_data: LurkData<F> = bincode::deserialize(&lurk_data_bytes)?;
+                let payload = lurk_data.populate_zstore(&mut repl.zstore);
+                Ok(payload)
+            })
         },
     };
 
@@ -782,40 +828,42 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The symbol naming the protocol",
         run: |repl, args, _dir| {
-            let (&name, rest) = repl.car_cdr(args);
-            let (&vars, rest) = repl.car_cdr(rest);
-            let (&body, &props) = repl.car_cdr(rest);
-            Self::validate_binding_symbol(repl, &name)?;
-            if vars.tag != Tag::Cons && &vars != repl.zstore.nil() {
-                bail!("Protocol vars must be a list");
-            }
-
-            let empty_str = repl.zstore.intern_string("");
-            let property_map = repl.zstore.property_map(&props)?;
-
-            let get_prop = |key, accepts: fn(&ZPtr<F>) -> bool, def| -> Result<ZPtr<F>> {
-                let Some(val) = property_map.get(key) else {
-                    return Ok(def);
-                };
-                if accepts(val) {
-                    Ok(**val)
-                } else {
-                    bail!("Invalid value for property {key}")
+            Box::pin(async move {
+                let (&name, rest) = repl.car_cdr(args);
+                let (&vars, rest) = repl.car_cdr(rest);
+                let (&body, &props) = repl.car_cdr(rest);
+                Self::validate_binding_symbol(repl, &name)?;
+                if vars.tag != Tag::Cons && &vars != repl.zstore.nil() {
+                    bail!("Protocol vars must be a list");
                 }
-            };
 
-            // TODO: handle lang properly
-            let lang = get_prop(
-                "lang",
-                |_| true, // accept anything for now
-                *repl.zstore.nil(),
-            )?;
+                let empty_str = repl.zstore.intern_string("");
+                let property_map = repl.zstore.property_map(&props)?;
 
-            let description = get_prop("description", |val| val.tag == Tag::Str, empty_str)?;
+                let get_prop = |key, accepts: fn(&ZPtr<F>) -> bool, def| -> Result<ZPtr<F>> {
+                    let Some(val) = property_map.get(key) else {
+                        return Ok(def);
+                    };
+                    if accepts(val) {
+                        Ok(**val)
+                    } else {
+                        bail!("Invalid value for property {key}")
+                    }
+                };
 
-            let protocol = repl.zstore.intern_list([vars, body, lang, description]);
-            repl.bind(name, protocol);
-            Ok(name)
+                // TODO: handle lang properly
+                let lang = get_prop(
+                    "lang",
+                    |_| true, // accept anything for now
+                    *repl.zstore.nil(),
+                )?;
+
+                let description = get_prop("description", |val| val.tag == Tag::Str, empty_str)?;
+
+                let protocol = repl.zstore.intern_list([vars, body, lang, description]);
+                repl.bind(name, protocol);
+                Ok(name)
+            })
         },
     };
 
@@ -830,40 +878,42 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(help)", "!(help prove)"],
         returns: "t",
         run: |repl, args, _dir| {
-            if args != repl.zstore.nil() {
-                let [arg] = repl.take(args)?;
-                if !matches!(arg.tag, Tag::Sym | Tag::Builtin) {
-                    bail!("Argument must be a symbol");
+            Box::pin(async move {
+                if args != repl.zstore.nil() {
+                    let [arg] = repl.take(args)?;
+                    if !matches!(arg.tag, Tag::Sym | Tag::Builtin) {
+                        bail!("Argument must be a symbol");
+                    }
+                    let sym_path = repl.zstore.fetch_symbol_path(arg);
+                    let Some(name) = sym_path.last() else {
+                        bail!("Argument can't be the root symbol");
+                    };
+                    let Some(meta_cmd) = repl.meta_cmds.get(&meta_sym(name)) else {
+                        bail!("Unknown meta command");
+                    };
+                    println!("{} - {}", meta_cmd.name, meta_cmd.summary);
+                    if !meta_cmd.info.is_empty() {
+                        println!("  Info:");
+                    }
+                    for e in meta_cmd.info {
+                        println!("    {e}");
+                    }
+                    println!("  Format: {}", meta_cmd.format);
+                    if !meta_cmd.example.is_empty() {
+                        println!("  Example:");
+                    }
+                    for e in meta_cmd.example {
+                        println!("    {e}");
+                    }
+                    println!("  Returns: {}", meta_cmd.returns);
+                } else {
+                    println!("Available commands:");
+                    for (_, i) in repl.meta_cmds.iter().sorted_by_key(|x| x.0) {
+                        println!("  {} - {}", i.name, i.summary);
+                    }
                 }
-                let sym_path = repl.zstore.fetch_symbol_path(arg);
-                let Some(name) = sym_path.last() else {
-                    bail!("Argument can't be the root symbol");
-                };
-                let Some(meta_cmd) = repl.meta_cmds.get(&meta_sym(name)) else {
-                    bail!("Unknown meta command");
-                };
-                println!("{} - {}", meta_cmd.name, meta_cmd.summary);
-                if !meta_cmd.info.is_empty() {
-                    println!("  Info:");
-                }
-                for e in meta_cmd.info {
-                    println!("    {e}");
-                }
-                println!("  Format: {}", meta_cmd.format);
-                if !meta_cmd.example.is_empty() {
-                    println!("  Example:");
-                }
-                for e in meta_cmd.example {
-                    println!("    {e}");
-                }
-                println!("  Returns: {}", meta_cmd.returns);
-            } else {
-                println!("Available commands:");
-                for (_, i) in repl.meta_cmds.iter().sorted_by_key(|x| x.0) {
-                    println!("  {} - {}", i.name, i.summary);
-                }
-            }
-            Ok(*repl.zstore.t())
+                Ok(*repl.zstore.t())
+            })
         },
     };
 }
@@ -879,12 +929,14 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["'(1 2 3)", "!(prove)", "!(prove '(1 2 3))"],
         returns: "The proof key as a string",
         run: |repl, args, _dir| {
-            if args != repl.zstore.nil() {
-                let [&expr] = repl.take(args)?;
-                repl.handle_non_meta(&expr)?;
-            }
-            let proof_key = repl.prove_last_reduction()?;
-            Ok(repl.zstore.intern_string(&proof_key))
+            Box::pin(async move {
+                if args != repl.zstore.nil() {
+                    let [&expr] = repl.take(args)?;
+                    repl.handle_non_meta(&expr)?;
+                }
+                let proof_key = repl.prove_last_reduction()?;
+                Ok(repl.zstore.intern_string(&proof_key))
+            })
         },
     };
 
@@ -923,22 +975,27 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(verify \"2ae20412c6f4740f409196522c15b0e42aae2338c2b5b9c524f675cba0a93e\")"],
         returns: "t",
         run: |repl, args, _dir| {
-            let (proof_key, cached_proof) = Self::load_cached_proof_with_repl(repl, args)?;
-            let has_same_verifier_version = cached_proof.crypto_proof.has_same_verifier_version();
-            let machine = new_machine(&repl.toplevel);
-            let machine_proof = cached_proof.into_machine_proof();
-            let (_, vk) = machine.setup(&LairMachineProgram);
-            let challenger = &mut machine.config().challenger();
-            if machine.verify(&vk, &machine_proof, challenger).is_ok() {
-                println!("✓ Proof \"{proof_key}\" verified");
-                Ok(*repl.zstore.t())
-            } else {
-                let mut msg = format!("✗ Proof \"{proof_key}\" failed on verification");
-                if !has_same_verifier_version {
-                    msg.push_str("\nWarning: proof was created for a different verifier version");
+            Box::pin(async move {
+                let (proof_key, cached_proof) = Self::load_cached_proof_with_repl(repl, args)?;
+                let has_same_verifier_version =
+                    cached_proof.crypto_proof.has_same_verifier_version();
+                let machine = new_machine(&repl.toplevel);
+                let machine_proof = cached_proof.into_machine_proof();
+                let (_, vk) = machine.setup(&LairMachineProgram);
+                let challenger = &mut machine.config().challenger();
+                if machine.verify(&vk, &machine_proof, challenger).is_ok() {
+                    println!("✓ Proof \"{proof_key}\" verified");
+                    Ok(*repl.zstore.t())
+                } else {
+                    let mut msg = format!("✗ Proof \"{proof_key}\" failed on verification");
+                    if !has_same_verifier_version {
+                        msg.push_str(
+                            "\nWarning: proof was created for a different verifier version",
+                        );
+                    }
+                    bail!(msg);
                 }
-                bail!(msg);
-            }
+            })
         },
     };
 
@@ -950,22 +1007,24 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(inspect \"2ae20412c6f4740f409196522c15b0e42aae2338c2b5b9c524f675cba0a93e\")"],
         returns: "The proof claim",
         run: |repl, args, _dir| {
-            let CachedProof {
-                expr,
-                env,
-                result,
-                zdag,
-                ..
-            } = Self::load_cached_proof_with_repl(repl, args)?.1;
-            zdag.populate_zstore(&mut repl.zstore);
-            println!(
-                "Expr: {}\nEnv: {}\nResult: {}",
-                repl.fmt(&expr),
-                repl.fmt(&env),
-                repl.fmt(&result)
-            );
-            let expr_env = repl.zstore.intern_cons(expr, env);
-            Ok(repl.zstore.intern_cons(expr_env, result))
+            Box::pin(async move {
+                let CachedProof {
+                    expr,
+                    env,
+                    result,
+                    zdag,
+                    ..
+                } = Self::load_cached_proof_with_repl(repl, args)?.1;
+                zdag.populate_zstore(&mut repl.zstore);
+                println!(
+                    "Expr: {}\nEnv: {}\nResult: {}",
+                    repl.fmt(&expr),
+                    repl.fmt(&env),
+                    repl.fmt(&result)
+                );
+                let expr_env = repl.zstore.intern_cons(expr, env);
+                Ok(repl.zstore.intern_cons(expr_env, result))
+            })
         },
     };
 
@@ -1042,67 +1101,69 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The proof key",
         run: |repl, args, _dir| {
-            let (&protocol_expr, rest) = repl.car_cdr(args);
-            let (path, &args) = repl.car_cdr(rest);
+            Box::pin(async move {
+                let (&protocol_expr, rest) = repl.car_cdr(args);
+                let (path, &args) = repl.car_cdr(rest);
 
-            if path.tag != Tag::Str {
-                bail!("Path must be a string");
-            }
-            let path_str = repl.zstore.fetch_string(path);
-
-            let (protocol, _) = repl.reduce_aux(&protocol_expr)?;
-            if protocol.tag == Tag::Err {
-                bail!("Error when evaluating the protocol");
-            }
-            let (vars_vec, &body) = Self::get_vars_vec_and_body(repl, &protocol)?;
-            let vars_vec = copy_inner(vars_vec);
-
-            let (args_vec, _) = repl.zstore.fetch_list(&args);
-            if args_vec.len() != vars_vec.len() {
-                bail!(
-                    "Mismatching arity. Protocol requires {} arguments but {} were provided",
-                    vars_vec.len(),
-                    args_vec.len()
-                );
-            }
-            let args_vec = copy_inner(args_vec);
-            let mut args_vec_reduced = Vec::with_capacity(args_vec.len());
-            for arg in args_vec.iter() {
-                let (arg_reduced, _) = repl.reduce_aux(arg)?;
-                if arg_reduced.tag == Tag::Err {
-                    bail!("Error when evaluating a protocol argument");
+                if path.tag != Tag::Str {
+                    bail!("Path must be a string");
                 }
-                repl.memoize_dag(&arg_reduced);
-                args_vec_reduced.push(arg_reduced);
-            }
+                let path_str = repl.zstore.fetch_string(path);
 
-            let (&claim, &post_verify_predicate) = Self::get_claim_and_post_verify_predicade(
-                repl,
-                vars_vec,
-                args_vec_reduced.clone(),
-                &body,
-            )?;
+                let (protocol, _) = repl.reduce_aux(&protocol_expr)?;
+                if protocol.tag == Tag::Err {
+                    bail!("Error when evaluating the protocol");
+                }
+                let (vars_vec, &body) = Self::get_vars_vec_and_body(repl, &protocol)?;
+                let vars_vec = copy_inner(vars_vec);
 
-            Self::post_verify_check(repl, post_verify_predicate)?;
+                let (args_vec, _) = repl.zstore.fetch_list(&args);
+                if args_vec.len() != vars_vec.len() {
+                    bail!(
+                        "Mismatching arity. Protocol requires {} arguments but {} were provided",
+                        vars_vec.len(),
+                        args_vec.len()
+                    );
+                }
+                let args_vec = copy_inner(args_vec);
+                let mut args_vec_reduced = Vec::with_capacity(args_vec.len());
+                for arg in args_vec.iter() {
+                    let (arg_reduced, _) = repl.reduce_aux(arg)?;
+                    if arg_reduced.tag == Tag::Err {
+                        bail!("Error when evaluating a protocol argument");
+                    }
+                    repl.memoize_dag(&arg_reduced);
+                    args_vec_reduced.push(arg_reduced);
+                }
 
-            let (expr_env, &expected_result) = repl.zstore.fetch_tuple11(&claim);
-            if expr_env.tag != Tag::Cons {
-                bail!("Malformed protocol claim");
-            }
-            let (&expr, &env) = repl.zstore.fetch_tuple11(expr_env);
-            let result = repl.reduce_with_env(&expr, &env)?;
-            if result != expected_result {
-                bail!("Mismatch between result and expected result");
-            }
+                let (&claim, &post_verify_predicate) = Self::get_claim_and_post_verify_predicade(
+                    repl,
+                    vars_vec,
+                    args_vec_reduced.clone(),
+                    &body,
+                )?;
 
-            let proof_key = repl.prove_last_reduction()?;
-            let cached_proof = Self::load_cached_proof(&proof_key)?;
-            let crypto_proof = cached_proof.crypto_proof;
-            let args_reduced = repl.zstore.intern_list(args_vec_reduced);
-            let protocol_proof = ProtocolProof::new(crypto_proof, args_reduced, &repl.zstore);
-            std::fs::write(&path_str, bincode::serialize(&protocol_proof)?)?;
-            println!("Protocol proof saved on file `{path_str}`");
-            Ok(repl.zstore.intern_string(&proof_key))
+                Self::post_verify_check(repl, post_verify_predicate)?;
+
+                let (expr_env, &expected_result) = repl.zstore.fetch_tuple11(&claim);
+                if expr_env.tag != Tag::Cons {
+                    bail!("Malformed protocol claim");
+                }
+                let (&expr, &env) = repl.zstore.fetch_tuple11(expr_env);
+                let result = repl.reduce_with_env(&expr, &env)?;
+                if result != expected_result {
+                    bail!("Mismatch between result and expected result");
+                }
+
+                let proof_key = repl.prove_last_reduction()?;
+                let cached_proof = Self::load_cached_proof(&proof_key)?;
+                let crypto_proof = cached_proof.crypto_proof;
+                let args_reduced = repl.zstore.intern_list(args_vec_reduced);
+                let protocol_proof = ProtocolProof::new(crypto_proof, args_reduced, &repl.zstore);
+                std::fs::write(&path_str, bincode::serialize(&protocol_proof)?)?;
+                println!("Protocol proof saved on file `{path_str}`");
+                Ok(repl.zstore.intern_string(&proof_key))
+            })
         },
     };
 
@@ -1122,62 +1183,71 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(verify-protocol my-protocol \"protocol-proof\")"],
         returns: "t",
         run: |repl, args, _dir| {
-            let [&protocol_expr, path] = repl.take(args)?;
-            if path.tag != Tag::Str {
-                bail!("Path must be a string");
-            }
-            let path_str = repl.zstore.fetch_string(path);
-
-            let (protocol, _) = repl.reduce_aux(&protocol_expr)?;
-            if protocol.tag == Tag::Err {
-                bail!("Error when evaluating the protocol");
-            }
-            let (vars_vec, &body) = Self::get_vars_vec_and_body(repl, &protocol)?;
-            let vars_vec = copy_inner(vars_vec);
-
-            let protocol_proof_bytes = std::fs::read(path_str)?;
-            let ProtocolProof { crypto_proof, args } = bincode::deserialize(&protocol_proof_bytes)?;
-            if args.is_flawed(&mut repl.zstore) {
-                bail!("Arguments contain flawed data");
-            }
-            let args = args.populate_zstore(&mut repl.zstore);
-            let (args_vec_reduced, None) = repl.zstore.fetch_list(&args) else {
-                bail!("Arguments must be a list");
-            };
-            if args_vec_reduced.len() != vars_vec.len() {
-                bail!(
-                    "Mismatching arity. Protocol requires {} arguments but {} were provided",
-                    vars_vec.len(),
-                    args_vec_reduced.len()
-                );
-            }
-            let args_vec_reduced = copy_inner(args_vec_reduced);
-
-            let (&claim, &post_verify_predicate) =
-                Self::get_claim_and_post_verify_predicade(repl, vars_vec, args_vec_reduced, &body)?;
-
-            let (expr_env, result) = repl.zstore.fetch_tuple11(&claim);
-            if expr_env.tag != Tag::Cons {
-                bail!("Malformed protocol claim");
-            }
-            let (expr, env) = repl.zstore.fetch_tuple11(expr_env);
-            let has_same_verifier_version = crypto_proof.has_same_verifier_version();
-            let machine_proof = crypto_proof.into_machine_proof(expr, env, result);
-            let machine = new_machine(&repl.toplevel);
-            let (_, vk) = machine.setup(&LairMachineProgram);
-            let challenger = &mut machine.config().challenger();
-            if machine.verify(&vk, &machine_proof, challenger).is_err() {
-                let mut msg = "Proof verification failed".to_string();
-                if !has_same_verifier_version {
-                    msg.push_str("\nWarning: proof was created for a different verifier version");
+            Box::pin(async move {
+                let [&protocol_expr, path] = repl.take(args)?;
+                if path.tag != Tag::Str {
+                    bail!("Path must be a string");
                 }
-                bail!(msg);
-            }
+                let path_str = repl.zstore.fetch_string(path);
 
-            Self::post_verify_check(repl, post_verify_predicate)?;
+                let (protocol, _) = repl.reduce_aux(&protocol_expr)?;
+                if protocol.tag == Tag::Err {
+                    bail!("Error when evaluating the protocol");
+                }
+                let (vars_vec, &body) = Self::get_vars_vec_and_body(repl, &protocol)?;
+                let vars_vec = copy_inner(vars_vec);
 
-            println!("Proof accepted by the protocol");
-            Ok(*repl.zstore.t())
+                let protocol_proof_bytes = std::fs::read(path_str)?;
+                let ProtocolProof { crypto_proof, args } =
+                    bincode::deserialize(&protocol_proof_bytes)?;
+                if args.is_flawed(&mut repl.zstore) {
+                    bail!("Arguments contain flawed data");
+                }
+                let args = args.populate_zstore(&mut repl.zstore);
+                let (args_vec_reduced, None) = repl.zstore.fetch_list(&args) else {
+                    bail!("Arguments must be a list");
+                };
+                if args_vec_reduced.len() != vars_vec.len() {
+                    bail!(
+                        "Mismatching arity. Protocol requires {} arguments but {} were provided",
+                        vars_vec.len(),
+                        args_vec_reduced.len()
+                    );
+                }
+                let args_vec_reduced = copy_inner(args_vec_reduced);
+
+                let (&claim, &post_verify_predicate) = Self::get_claim_and_post_verify_predicade(
+                    repl,
+                    vars_vec,
+                    args_vec_reduced,
+                    &body,
+                )?;
+
+                let (expr_env, result) = repl.zstore.fetch_tuple11(&claim);
+                if expr_env.tag != Tag::Cons {
+                    bail!("Malformed protocol claim");
+                }
+                let (expr, env) = repl.zstore.fetch_tuple11(expr_env);
+                let has_same_verifier_version = crypto_proof.has_same_verifier_version();
+                let machine_proof = crypto_proof.into_machine_proof(expr, env, result);
+                let machine = new_machine(&repl.toplevel);
+                let (_, vk) = machine.setup(&LairMachineProgram);
+                let challenger = &mut machine.config().challenger();
+                if machine.verify(&vk, &machine_proof, challenger).is_err() {
+                    let mut msg = "Proof verification failed".to_string();
+                    if !has_same_verifier_version {
+                        msg.push_str(
+                            "\nWarning: proof was created for a different verifier version",
+                        );
+                    }
+                    bail!(msg);
+                }
+
+                Self::post_verify_check(repl, post_verify_predicate)?;
+
+                println!("Proof accepted by the protocol");
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -1209,43 +1279,45 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The microchain's ID",
         run: |repl, args, _dir| {
-            let [&addr_expr, &state_expr] = repl.take(args)?;
-            let (addr, _) = repl.reduce_aux(&addr_expr)?;
-            if addr.tag != Tag::Str {
-                bail!("Address must be a string");
-            }
-            let (state, _) = repl.reduce_aux(&state_expr)?;
-            if state.tag != Tag::Cons {
-                bail!("State must be a pair");
-            }
+            Box::pin(async move {
+                let [&addr_expr, &state_expr] = repl.take(args)?;
+                let (addr, _) = repl.reduce_aux(&addr_expr)?;
+                if addr.tag != Tag::Str {
+                    bail!("Address must be a string");
+                }
+                let (state, _) = repl.reduce_aux(&state_expr)?;
+                if state.tag != Tag::Cons {
+                    bail!("State must be a pair");
+                }
 
-            repl.memoize_dag(&state);
+                repl.memoize_dag(&state);
 
-            let (&chain_result, &next_callable) = repl.zstore.fetch_tuple11(&state);
-            let chain_result = LurkData::new(chain_result, &repl.zstore);
-            let callable_data = if next_callable.tag == Tag::Comm {
-                let comm_data = Self::build_comm_data(repl, next_callable.digest.as_slice());
-                CallableData::Comm(comm_data)
-            } else {
-                CallableData::Fun(LurkData::new(next_callable, &repl.zstore))
-            };
+                let (&chain_result, &next_callable) = repl.zstore.fetch_tuple11(&state);
+                let chain_result = LurkData::new(chain_result, &repl.zstore);
+                let callable_data = if next_callable.tag == Tag::Comm {
+                    let comm_data = Self::build_comm_data(repl, next_callable.digest.as_slice());
+                    CallableData::Comm(comm_data)
+                } else {
+                    CallableData::Fun(LurkData::new(next_callable, &repl.zstore))
+                };
 
-            let genesis = ChainState {
-                chain_result,
-                callable_data,
-            };
+                let genesis = ChainState {
+                    chain_result,
+                    callable_data,
+                };
 
-            let addr_str = repl.zstore.fetch_string(&addr);
-            let stream = &mut TcpStream::connect(addr_str)?;
-            write_data(stream, Request::Start(genesis))?;
-            let Response::IdSecret(id_secret) = read_data(stream)? else {
-                bail!("Could not read ID secret from server");
-            };
+                let addr_str = repl.zstore.fetch_string(&addr);
+                let stream = &mut TcpStream::connect(addr_str)?;
+                write_data(stream, Request::Start(genesis))?;
+                let Response::IdSecret(id_secret) = read_data(stream)? else {
+                    bail!("Could not read ID secret from server");
+                };
 
-            let id_digest = CommData::hash(&id_secret, &state, &mut repl.zstore);
+                let id_digest = CommData::hash(&id_secret, &state, &mut repl.zstore);
 
-            let id = repl.zstore.intern_comm(id_digest);
-            Ok(id)
+                let id = repl.zstore.intern_comm(id_digest);
+                Ok(id)
+            })
         },
     };
 
@@ -1280,16 +1352,18 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The microchain's genesis state",
         run: |repl, args, _dir| {
-            let mut stream = Self::send_get_state_request(repl, args, Request::GetGenesis)?;
-            let Response::Genesis(id_secret, chain_state) = read_data(&mut stream)? else {
-                bail!("Could not read state from server");
-            };
-            let state = chain_state.into_zptr(&mut repl.zstore);
+            Box::pin(async move {
+                let mut stream = Self::send_get_state_request(repl, args, Request::GetGenesis)?;
+                let Response::Genesis(id_secret, chain_state) = read_data(&mut stream)? else {
+                    bail!("Could not read state from server");
+                };
+                let state = chain_state.into_zptr(&mut repl.zstore);
 
-            // memoize preimg so it's possible to open the ID
-            CommData::hash(&id_secret, &state, &mut repl.zstore);
+                // memoize preimg so it's possible to open the ID
+                CommData::hash(&id_secret, &state, &mut repl.zstore);
 
-            Ok(state)
+                Ok(state)
+            })
         },
     };
 
@@ -1301,12 +1375,28 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(microchain-get-state \"127.0.0.1:1234\" #c0x123)"],
         returns: "The microchain's latest state",
         run: |repl, args, _dir| {
-            let mut stream = Self::send_get_state_request(repl, args, Request::GetState)?;
-            let Response::State(chain_state) = read_data(&mut stream)? else {
-                bail!("Could not read state from server");
-            };
-            let state = chain_state.into_zptr(&mut repl.zstore);
-            Ok(state)
+            Box::pin(async move {
+                let [&addr_expr, &id_expr] = repl.take(args)?;
+                let (addr, _) = repl.reduce_aux(&addr_expr)?;
+                if addr.tag != Tag::Str {
+                    bail!("Address must be a string");
+                }
+                let (id, _) = repl.reduce_aux(&id_expr)?;
+                let addr_str = repl.zstore.fetch_string(&addr);
+
+                let chain_state = if repl.linera {
+                    graphql_client::microchain_get_state(&addr_str).await?
+                } else {
+                    let mut stream = TcpStream::connect(addr_str)?;
+                    write_data(&mut stream, Request::GetState(id.digest))?;
+                    let Response::State(chain_state) = read_data(&mut stream)? else {
+                        bail!("Could not read state from server");
+                    };
+                    chain_state
+                };
+                let state = chain_state.into_zptr(&mut repl.zstore);
+                Ok(state)
+            })
         },
     };
 
@@ -1319,57 +1409,69 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(microchain-transition \"127.0.0.1:1234\" #c0x123 state arg0 arg1)"],
         returns: "The new state",
         run: |repl, args, _dir| {
-            let (&addr_expr, rest) = repl.car_cdr(args);
-            let (&id_expr, &rest) = repl.car_cdr(rest);
-            let (addr, _) = repl.reduce_aux(&addr_expr)?;
-            if addr.tag != Tag::Str {
-                bail!("Address must be a string");
-            }
-            let (id, _) = repl.reduce_aux(&id_expr)?;
-            let (&current_state_expr, &call_args) = repl.car_cdr(&rest);
-            let (state, call_args) = Self::transition_call(repl, &current_state_expr, call_args)?;
-            if state.tag != Tag::Cons {
-                bail!("New state is not a pair");
-            }
-            let (&state_chain_result, &state_callable) = repl.zstore.fetch_tuple11(&state);
-
-            let proof_key = repl.prove_last_reduction()?;
-            let cached_proof = Self::load_cached_proof(&proof_key)?;
-            let crypto_proof = cached_proof.crypto_proof;
-
-            let next_chain_result = LurkData::new(state_chain_result, &repl.zstore);
-            let next_callable = if state_callable.tag == Tag::Comm {
-                let comm_data = Self::build_comm_data(repl, state_callable.digest.as_slice());
-                CallableData::Comm(comm_data)
-            } else {
-                CallableData::Fun(LurkData::new(state_callable, &repl.zstore))
-            };
-
-            let chain_proof = ChainProof {
-                crypto_proof,
-                call_args,
-                next_chain_result,
-                next_callable,
-            };
-            let addr_str = repl.zstore.fetch_string(&addr);
-            let stream = &mut TcpStream::connect(addr_str)?;
-            write_data(stream, Request::Transition(id.digest, chain_proof))?;
-            match read_data::<Response>(stream)? {
-                Response::ProofAccepted => {
-                    println!("Proof accepted by the server");
-                    Ok(state)
+            Box::pin(async move {
+                let (&addr_expr, rest) = repl.car_cdr(args);
+                let (&id_expr, &rest) = repl.car_cdr(rest);
+                let (addr, _) = repl.reduce_aux(&addr_expr)?;
+                if addr.tag != Tag::Str {
+                    bail!("Address must be a string");
                 }
-                Response::ProofVerificationFailed(verifier_version) => {
-                    let mut msg = "Proof verification failed".to_string();
-                    if verifier_version != get_verifier_version() {
-                        msg.push_str(
-                            "\nWarning: proof was created for a different verifier version",
-                        );
-                    }
-                    bail!(msg);
+                let (id, _) = repl.reduce_aux(&id_expr)?;
+                let (&current_state_expr, &call_args) = repl.car_cdr(&rest);
+                let (state, call_args) =
+                    Self::transition_call(repl, &current_state_expr, call_args)?;
+                if state.tag != Tag::Cons {
+                    bail!("New state is not a pair");
                 }
-                _ => bail!("Bad server response"),
-            }
+                let (&state_chain_result, &state_callable) = repl.zstore.fetch_tuple11(&state);
+
+                let proof_key = repl.prove_last_reduction()?;
+                let cached_proof = Self::load_cached_proof(&proof_key)?;
+                let crypto_proof = cached_proof.crypto_proof;
+
+                let next_chain_result = LurkData::new(state_chain_result, &repl.zstore);
+                let next_callable = if state_callable.tag == Tag::Comm {
+                    let comm_data = Self::build_comm_data(repl, state_callable.digest.as_slice());
+                    CallableData::Comm(comm_data)
+                } else {
+                    CallableData::Fun(LurkData::new(state_callable, &repl.zstore))
+                };
+
+                let chain_proof = ChainProof {
+                    crypto_proof,
+                    call_args,
+                    next_chain_result,
+                    next_callable,
+                };
+                let addr_str = repl.zstore.fetch_string(&addr);
+
+                if repl.linera {
+                    // write chain_proof to a temp file
+                    let data = bincode::serialize(&chain_proof)?;
+                    let hash = graphql_client::publish_data_blob(&addr_str, "chain_id".into(), data).await;
+                    // graphql_client::microchain_get_state(&addr_str).await?
+                    todo!()
+                } else {
+                    let stream = &mut TcpStream::connect(addr_str)?;
+                    write_data(stream, Request::Transition(id.digest, chain_proof))?;
+                    match read_data::<Response>(stream)? {
+                        Response::ProofAccepted => {
+                            println!("Proof accepted by the server");
+                            Ok(state)
+                        }
+                        Response::ProofVerificationFailed(verifier_version) => {
+                            let mut msg = "Proof verification failed".to_string();
+                            if verifier_version != get_verifier_version() {
+                                msg.push_str(
+                                    "\nWarning: proof was created for a different verifier version",
+                                );
+                            }
+                            bail!(msg);
+                        }
+                        _ => bail!("Bad server response"),
+                    }    
+                }
+            })
         },
     };
 
@@ -1381,57 +1483,60 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         example: &["!(microchain-verify \"127.0.0.1:1234\" #c0x123 genesis current)"],
         returns: "t",
         run: |repl, args, _dir| {
-            let [&addr_expr, &id_expr, &initial_state_expr, &final_state_expr] = repl.take(args)?;
-            let (addr, _) = repl.reduce_aux(&addr_expr)?;
-            if addr.tag != Tag::Str {
-                bail!("Address must be a string");
-            }
-            let (id, _) = repl.reduce_aux(&id_expr)?;
-            let (initial_state, _) = repl.reduce_aux(&initial_state_expr)?;
-            if initial_state.tag != Tag::Cons {
-                bail!("Initial state must be a pair");
-            }
-            let (final_state, _) = repl.reduce_aux(&final_state_expr)?;
-            if final_state.tag != Tag::Cons {
-                bail!("Final state must be a pair");
-            }
-            let addr_str = repl.zstore.fetch_string(&addr);
-            let stream = &mut TcpStream::connect(addr_str)?;
-            write_data(
-                stream,
-                Request::GetProofs(id.digest, initial_state.digest, final_state.digest),
-            )?;
-            let Response::Proofs(proofs) = read_data(stream)? else {
-                bail!("Could not read proofs from server");
-            };
-            repl.memoize_dag(&initial_state);
-            let (_, &(mut callable)) = repl.zstore.fetch_tuple11(&initial_state);
-            let mut state = initial_state;
-            let empty_env = repl.zstore.intern_empty_env();
-            for (i, proof) in proofs.into_iter().enumerate() {
-                let OpaqueChainProof {
-                    crypto_proof,
-                    call_args,
-                    next_chain_result,
-                    next_callable,
-                } = proof;
-                let expr = repl.zstore.intern_cons(callable, call_args);
-                let result = repl.zstore.intern_cons(next_chain_result, next_callable);
-                let machine_proof = crypto_proof.into_machine_proof(&expr, &empty_env, &result);
-                let machine = new_machine(&repl.toplevel);
-                let (_, vk) = machine.setup(&LairMachineProgram);
-                let challenger = &mut machine.config().challenger();
-                if machine.verify(&vk, &machine_proof, challenger).is_err() {
-                    bail!("{}-th transition proof doesn't verify", i + 1);
+            Box::pin(async move {
+                let [&addr_expr, &id_expr, &initial_state_expr, &final_state_expr] =
+                    repl.take(args)?;
+                let (addr, _) = repl.reduce_aux(&addr_expr)?;
+                if addr.tag != Tag::Str {
+                    bail!("Address must be a string");
                 }
-                callable = next_callable;
-                state = result;
-            }
-            if state != final_state {
-                bail!("Chain final state doesn't match target final state");
-            }
-            println!("Microchain verification succeeded");
-            Ok(*repl.zstore.t())
+                let (id, _) = repl.reduce_aux(&id_expr)?;
+                let (initial_state, _) = repl.reduce_aux(&initial_state_expr)?;
+                if initial_state.tag != Tag::Cons {
+                    bail!("Initial state must be a pair");
+                }
+                let (final_state, _) = repl.reduce_aux(&final_state_expr)?;
+                if final_state.tag != Tag::Cons {
+                    bail!("Final state must be a pair");
+                }
+                let addr_str = repl.zstore.fetch_string(&addr);
+                let stream = &mut TcpStream::connect(addr_str)?;
+                write_data(
+                    stream,
+                    Request::GetProofs(id.digest, initial_state.digest, final_state.digest),
+                )?;
+                let Response::Proofs(proofs) = read_data(stream)? else {
+                    bail!("Could not read proofs from server");
+                };
+                repl.memoize_dag(&initial_state);
+                let (_, &(mut callable)) = repl.zstore.fetch_tuple11(&initial_state);
+                let mut state = initial_state;
+                let empty_env = repl.zstore.intern_empty_env();
+                for (i, proof) in proofs.into_iter().enumerate() {
+                    let OpaqueChainProof {
+                        crypto_proof,
+                        call_args,
+                        next_chain_result,
+                        next_callable,
+                    } = proof;
+                    let expr = repl.zstore.intern_cons(callable, call_args);
+                    let result = repl.zstore.intern_cons(next_chain_result, next_callable);
+                    let machine_proof = crypto_proof.into_machine_proof(&expr, &empty_env, &result);
+                    let machine = new_machine(&repl.toplevel);
+                    let (_, vk) = machine.setup(&LairMachineProgram);
+                    let challenger = &mut machine.config().challenger();
+                    if machine.verify(&vk, &machine_proof, challenger).is_err() {
+                        bail!("{}-th transition proof doesn't verify", i + 1);
+                    }
+                    callable = next_callable;
+                    state = result;
+                }
+                if state != final_state {
+                    bail!("Chain final state doesn't match target final state");
+                }
+                println!("Microchain verification succeeded");
+                Ok(*repl.zstore.t())
+            })
         },
     };
 
@@ -1444,7 +1549,7 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             "!(load-ocaml \"my_file.ml\") !(prove)",
         ],
         returns: "t",
-        run: |repl, args, path| {
+        run: |repl, args, path| Box::pin(async move {
             let [file_name_zptr] = repl.take(args)?;
             if file_name_zptr.tag != Tag::Str {
                 bail!("Path must be a string");
@@ -1460,7 +1565,7 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             }
 
             Ok(*repl.zstore.t())
-        },
+        }),
     };
 
     const LOAD_OCAML_EXPR: Self = Self {
@@ -1476,17 +1581,19 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         ],
         returns: "The Lurk program corresponding to the OCaml expressions in the file",
         run: |repl, args, path| {
-            let [file_name_zptr] = repl.take(args)?;
-            if file_name_zptr.tag != Tag::Str {
-                bail!("Path must be a string");
-            }
-            let file_name = repl.zstore.fetch_string(file_name_zptr);
-            let zptr = compile_and_transform_single_file(
-                &mut repl.zstore,
-                &repl.state,
-                &path.join(file_name),
-            )?;
-            Ok(zptr)
+            Box::pin(async move {
+                let [file_name_zptr] = repl.take(args)?;
+                if file_name_zptr.tag != Tag::Str {
+                    bail!("Path must be a string");
+                }
+                let file_name = repl.zstore.fetch_string(file_name_zptr);
+                let zptr = compile_and_transform_single_file(
+                    &mut repl.zstore,
+                    &repl.state,
+                    &path.join(file_name),
+                )?;
+                Ok(zptr)
+            })
         },
     };
 }
@@ -1559,18 +1666,22 @@ mod test {
         DUMMY_PATH.get_or_init(Utf8PathBuf::default)
     }
 
-    #[test]
-    fn test_def() {
-        let mut repl = Repl::new_native(false);
+    #[tokio::test]
+    async fn test_def() {
+        let mut repl = Repl::new_native(false, false);
         let foo = repl.zstore.intern_symbol_no_lang(&user_sym("foo"));
         let a = repl.zstore.intern_symbol_no_lang(&user_sym("a"));
         let args = repl.zstore.intern_list([foo, a]);
-        assert!((MetaCmd::DEF.run)(&mut repl, &args, dummy_path()).is_err());
+        assert!((MetaCmd::DEF.run)(&mut repl, &args, dummy_path())
+            .await
+            .is_err());
 
         let a = repl.zstore.intern_char('a');
         let args = repl.zstore.intern_list([foo, a]);
         assert_eq!(
-            (MetaCmd::DEF.run)(&mut repl, &args, dummy_path()).unwrap(),
+            (MetaCmd::DEF.run)(&mut repl, &args, dummy_path())
+                .await
+                .unwrap(),
             foo
         );
     }
