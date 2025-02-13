@@ -12,25 +12,25 @@
 !(def y ((foo :new) '(9 8 7)))
 (emit (cons :foo-new ((foo :new) '(9 8 7)))) ;; 14 iterations
 
-;; First access of :b in x -- 55 iterations
+;; First access of :b in x -- 54 iterations
 (cons :xb (x :b))
-;; [55 iterations] => (:xb . 2)
+;; [54 iterations] => (:xb . 2)
 
 ;; Second access of :b in x -- 1 iteration
 (cons :xb-xb (begin (x :b) (x :b)))
-;; [57 iterations] => (:xb-xb . 2)
+;; [55 iterations] => (:xb-xb . 2)
 
-;; First access of :b in y -- 30 iterations
+;; First access of :b in y -- 27 iterations
 (cons :xb-xy (begin (x :b) (y :b)))
-;; [86 iterations] => (:xb-xy . 8)
+;; [81 iterations] => (:xb-xy . 8)
 
-;; First access of :a in x -- 27 iterations
+;; First access of :a in x -- 25 iterations
 (cons :xb-yb-xa (begin (x :b) (y :b) (x :a)))
-;; [113 iterations] => (:xb-yb-xa . 1)
+;; [106 iterations] => (:xb-yb-xa . 1)
 
-;; First access of :a in y -- 14 iterations
+;; First access of :a in y -- 11 iterations
 (cons :xb-yb-xa-ya (begin (x :b) (y :b) (x :a) (y :a)))
-;; [127 iterations] => (:xb-yb-xa-ya . 9)
+;; [117 iterations] => (:xb-yb-xa-ya . 9)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; alist-struct
@@ -43,11 +43,11 @@
 !(assert-eq 3 (x :c))
 
 !(def y ((foo :new) '(9 8 7)))
-(emit (cons :foo-new ((foo :new) '(9 8 7)))) ;; 64 iterations
+(emit (cons :foo-new ((foo :new) '(9 8 7)))) ;; 65 iterations
 
-;; First access of :b in x -- 32 iterations
+;; First access of :b in x -- 33 iterations
 (cons :xb (x :b))
-;; [32 iterations] => (:xb . 2)
+;; [33 iterations] => (:xb . 2)
 
 ;; Second access of :b in x -- 1 iteration
 (cons :xb-xb (begin (x :b) (x :b)))
@@ -55,13 +55,13 @@
 
 ;; First access of :b in y -- 30 iterations
 (cons :xb-xy (begin (x :b) (y :b)))
-;; [63 iterations] => (:xb-xy . 8)
+;; [64 iterations] => (:xb-xy . 8)
 
 ;; First access of :a in x -- 20 iterations
 (cons :xb-yb-xa (begin (x :b) (y :b) (x :a)))
-;; [113 iterations] => (:xb-yb-xa . 1)
+;; [84 iterations] => (:xb-yb-xa . 1)
 
 ;; First access of :a in y -- 19 iterations
 (cons :xb-yb-xa-ya (begin (x :b) (y :b) (x :a) (y :a)))
-;; [102 iterations] => (:xb-yb-xa-ya . 9)
+;; [103 iterations] => (:xb-yb-xa-ya . 9)
 
