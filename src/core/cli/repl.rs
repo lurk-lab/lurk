@@ -62,7 +62,7 @@ impl<F: Field> InputValidator<F> {
         loop {
             match delimited(
                 parse_space,
-                parse_syntax_eof::<F>(self.state.clone(), false),
+                parse_syntax_eof::<F>(self.state.clone(), true),
                 parse_space,
             )
             .parse(input)
@@ -617,7 +617,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         input: Span<'a>,
         file_dir: &Utf8Path,
     ) -> Result<Option<(usize, Span<'a>, ZPtr<F>, bool)>> {
-        let Some((rest, syn)) = parse(input, self.state.clone(), false)? else {
+        let Some((rest, syn)) = parse(input, self.state.clone(), true)? else {
             return Ok(None);
         };
         let offset = syn

@@ -568,7 +568,7 @@ impl<F: Field, C: Chipset<F>> ZStore<F, C> {
         state: StateRcCell,
         lang_symbols: &FxHashSet<Symbol>,
     ) -> ZPtr<F> {
-        let (_, syn) = parse(Span::new(input), state, false)
+        let (_, syn) = parse(Span::new(input), state, true)
             .expect("parse error")
             .expect("no input");
         self.intern_syntax(&syn, lang_symbols)
