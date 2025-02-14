@@ -38,6 +38,7 @@ fn test_lib() {
     set_config_if_unset(Config::default());
     let mut repl = Repl::new_native(false);
     assert!(repl.load_file("lib/tests.lurk".into(), false).is_ok());
+    assert!(repl.load_file("lib/tests.ls".into(), false).is_ok());
 }
 
 #[ignore]

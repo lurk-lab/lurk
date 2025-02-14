@@ -1,12 +1,12 @@
 !(load "macros.lurk")
 
 ;; and
-!(assert-eq '(if a (and b c)) (macroexpand-1 macro-env '(and a b c)))
-!(assert-eq t (macroexpand-1 macro-env '(and)))
+!(assert-eq '(if a (and b c)) (macroexpand1 macro-env '(and a b c)))
+!(assert-eq t (macroexpand1 macro-env '(and)))
 
 ;; or
-!(assert-eq '(if a a (or b c)) (macroexpand-1 macro-env '(or a b c)))
-!(assert-eq nil (macroexpand-1 macro-env '(or)))
+!(assert-eq '(if a a (or b c)) (macroexpand1 macro-env '(or a b c)))
+!(assert-eq nil (macroexpand1 macro-env '(or)))
 
 !(assert-eq '(if a (if b c)) (macroexpand-all macro-env '(and a b c)))
 !(assert-eq '(if a a (if b b c)) (macroexpand-all macro-env '(or a b c)))
@@ -18,14 +18,14 @@
 !(assert-eq '(cond
               ((type-eqq 0 x) 123)
               ((type-eqq 'x' x) 321))
-            (macroexpand-1 macro-env '(typecase x
-                                       (0 123)
-                                       ('x' 321))))
+            (macroexpand1 macro-env '(typecase x
+                                      (0 123)
+                                      ('x' 321))))
 
 ;; case
 !(assert-eq '(cond
               ((eqq 0 x) 123)
               ((eqq 'x' x) 321))
-            (macroexpand-1 macro-env '(case x
-                                       (0 123)
-                                       ('x' 321))))
+            (macroexpand1 macro-env '(case x
+                                      (0 123)
+                                      ('x' 321))))
