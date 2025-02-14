@@ -12,18 +12,8 @@ def(alistStruct, function (fields) {
     }
   }
 })
-// !(def alist-struct (lambda (fields)
-//                (lambda (op)
-//                  ;; Both :new and :type are a bit silly and could be normal functions.
-//                  ;; However this allows an interface that abstracts the implementation.
-//                  (if (eq op :new)
-//                      (lambda (vals)
-//                      (let ((alist (emit (zip fields vals))))
-//                        (lambda (field)
-//                          (cdr (assoc field alist)))))))))
 
 // Crude first-draft of struct implementation.
-
 def(struct, function (args) {
   return function (op) {
     if (op === 'new'.key) {
@@ -31,12 +21,3 @@ def(struct, function (args) {
     }
   }
 })
-
-// !(def struct (lambda (args)
-//                (lambda (op)
-//                  ;; Both :new and :type are a bit silly and could be normal functions.
-//                  ;; However this allows an interface that abstracts the implementation.
-//                  (if (eq op :new)
-//                      (lambda (vals)
-//                        (lambda (field)
-//                          (nth (position field args) vals)))))))
