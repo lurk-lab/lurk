@@ -472,10 +472,12 @@ fn parse_env<F: Field>(
     move |from: Span<'_>| {
         let (i, _) = tag("{")(from)?;
         let (i, _) = parse_space(i)?;
-        let (i, pairs) = separated_list0(
+        let (i, mut pairs) = separated_list0(
             tag(","),
             parse_env_pair(state.clone(), create_unknown_packages),
         )(i)?;
+        // We want the last entry to be the most significant one, so reverse the internal representation
+        pairs.reverse();
         let (upto, _) = tag("}")(i)?;
         let pos = Pos::from_upto(from, upto);
         Ok((upto, Syntax::Env(pos, pairs)))
