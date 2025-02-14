@@ -400,6 +400,11 @@ test!(test_env_literal_err, "{ a: (1 1), b: 2 }", |_| {
     ZPtr::err(EvalErr::ApplyNonFunc)
 });
 test!(
+    test_env_literal_ordering,
+    "(eval 'a { a: 1, b: 2, a: 3 })",
+    |z| z.intern_u64(3)
+);
+test!(
     test_bind_builtin,
     "(bind 'a (- 2 1) (current-env))",
     trivial_a_1_env
