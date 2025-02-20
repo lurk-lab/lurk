@@ -431,7 +431,7 @@ pub fn eval<F: AbstractField>() -> FuncE<F> {
                     let (body_tag, body, binds_tag, binds, mutual_env) = load(expr);
                     // extend `mutual_env` with the fixed points from the `letrec` bindings
                     // IMPORTANT: at this point this operation cannot return an error
-                    let (_tag, ext_env) = call(extend_env_with_mutuals, binds_tag, binds, binds, mutual_env);
+                    let (_tag, ext_env) = call(extend_env_with_mutuals, binds_tag, binds, binds, mutual_env, mutual_env);
                     let (res_tag, res) = call(eval, body_tag, body, ext_env);
                     return (res_tag, res)
                 }
@@ -1716,13 +1716,13 @@ pub fn eval_let<F: AbstractField>() -> FuncE<F> {
 /// Extends the original environment of a `letrec` with fixed points from its list of mutual bindings
 pub fn extend_env_with_mutuals<F: AbstractField>() -> FuncE<F> {
     func!(
-        fn extend_env_with_mutuals(binds_tag, binds, mutual_binds, mutual_env): [2] {
+        fn extend_env_with_mutuals(binds_tag, binds, mutual_binds, mutual_env, ext_env): [2] {
             let err_tag = Tag::Err;
             let env_tag = Tag::Env;
             let invalid_form_err = EvalErr::InvalidForm;
             match binds_tag {
                 InternalTag::Nil => {
-                    return (env_tag, mutual_env)
+                    return (env_tag, ext_env)
                 }
                 Tag::Cons => {
                     let cons_tag = Tag::Cons;
@@ -1744,17 +1744,12 @@ pub fn extend_env_with_mutuals<F: AbstractField>() -> FuncE<F> {
                     }
                     match var_tag {
                         Tag::Sym, Tag::Builtin, Tag::Coroutine => {
-                            let (ext_env_tag, ext_env) = call(extend_env_with_mutuals, binds_tag, binds, mutual_binds, mutual_env);
-                            match ext_env_tag {
-                                Tag::Err => {
-                                    return (ext_env_tag, ext_env)
-                                }
-                            };
                             let fix_tag = Tag::Fix;
                             // IMPORTANT: At this point, `mutual_binds` must be a cons
                             let fix = store(expr_tag, expr, cons_tag, mutual_binds, mutual_env);
-                            let res_env = store(var_tag, var, fix_tag, fix, ext_env);
-                            return (env_tag, res_env)
+                            let ext_env = store(var_tag, var, fix_tag, fix, ext_env);
+                            let (res_tag, ext_env) = call(extend_env_with_mutuals, binds_tag, binds, mutual_binds, mutual_env, ext_env);
+                            return (res_tag, ext_env)
                         }
                     };
                     let illegal_binding_var_err = EvalErr::IllegalBindingVar;
@@ -1797,7 +1792,7 @@ pub fn eval_letrec<F: AbstractField>() -> FuncE<F> {
     func!(
         partial fn eval_letrec(binds_tag, binds, body_tag, body, env): [2] {
             // extend `env` with the bindings from the mutual env
-            let (ext_env_tag, ext_env) = call(extend_env_with_mutuals, binds_tag, binds, binds, env);
+            let (ext_env_tag, ext_env) = call(extend_env_with_mutuals, binds_tag, binds, binds, env, env);
             match ext_env_tag {
                 Tag::Err => {
                     return (ext_env_tag, ext_env)
@@ -2082,7 +2077,7 @@ mod test {
         expect_eq(eval_list.width(), expect!["72"]);
         expect_eq(eval_let.width(), expect!["94"]);
         expect_eq(eval_letrec.width(), expect!["66"]);
-        expect_eq(extend_env_with_mutuals.width(), expect!["54"]);
+        expect_eq(extend_env_with_mutuals.width(), expect!["53"]);
         expect_eq(eval_letrec_bindings.width(), expect!["66"]);
         expect_eq(coerce_if_sym.width(), expect!["9"]);
         expect_eq(open_comm.width(), expect!["50"]);
