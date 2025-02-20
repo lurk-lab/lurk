@@ -196,6 +196,7 @@ test!(test_if3, "(if 1 1)", |_| uint(1));
 test!(test_if4, "(if nil 1)", |z| *z.nil());
 test!(test_let, "(let ((x 0) (y 1)) x)", |_| uint(0));
 test!(test_let2, "(let ((x 0) (y 1)) y)", |_| uint(1));
+test!(test_let3, "(let ((a 1) (a 2)) a)", |_| uint(2));
 test!(test_add, "(+ 1 2)", |_| uint(3));
 test!(test_sub, "(- 5 2)", |_| uint(3));
 test!(test_mul, "(* 2 3)", |_| uint(6));
@@ -444,6 +445,7 @@ test!(
          (let ((true nil)) (odd? 5))))",
     |z| *z.t()
 );
+test!(test_letrec4, "(letrec ((a 1) (a 2)) a)", |_| uint(2));
 test!(
     test_letrec_error,
     "(letrec ((odd? (lambda (n) (if (= n 0) nil (even? (- n 1)))))
