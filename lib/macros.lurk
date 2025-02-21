@@ -3,6 +3,7 @@
 ;; !(load "util.lurk")
 
 !(def macro-env ())
+
 !(def macro-env (bind-macro 'and macro-env
                             (lambda (whole)
                               (if (cdr whole)

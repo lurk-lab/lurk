@@ -42,6 +42,14 @@ fn test_lib() {
 
 #[ignore]
 #[test]
+fn test_lib_ls() {
+    set_config_if_unset(Config::default());
+    let mut repl = Repl::new_native(false);
+    assert!(repl.load_file("lib/tests.ls".into(), false).is_ok());
+}
+
+#[ignore]
+#[test]
 fn test_demo_files() {
     set_config_if_unset(Config::default());
     let demo_files = [
