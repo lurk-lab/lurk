@@ -50,6 +50,7 @@
                                                      (cons (cadr expanded)
                                                            (map (macroexpand-all macro-env) (cddr expanded))))
                                                (map (macroexpand-all macro-env) expanded)))))
+                                 ;; FIXME: handle envs -- whose values also need to be expanded.
                                  expanded))))
 
 !(def evl (lambda (macro-env env src)
