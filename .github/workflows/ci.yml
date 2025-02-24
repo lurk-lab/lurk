@@ -29,13 +29,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: lurk-lab/lurkscript
-          path: lurkscript
+          path: ../lurkscript
           ref: 'remove-set-panic-hook'
           token: ${{ secrets.REPO_TOKEN }}
       - name: Install Lurkscript
         run: |
-          mkdir .ci-bin
-          cd .ci-bin
+          mkdir ../.ci-bin
+          cd ../.ci-bin
           CI_BINDIR="$(pwd)"
           echo "$CI_BINDIR" >> $GITHUB_PATH
           cd ../lurkscript
