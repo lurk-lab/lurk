@@ -599,7 +599,7 @@ test_raw!(
     test_unbound_var2,
     |z| {
         // binding the built-in `cons` but evaluating a `Tag::Sym`-tagged `cons`
-        // should resuld in an unbound var error
+        // should result in an unbound var error
         let let_ = z.intern_symbol_no_lang(&builtin_sym("let"));
         let cons = z.intern_symbol_no_lang(&builtin_sym("cons"));
         let one = uint(1);
