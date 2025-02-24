@@ -32,7 +32,6 @@ jobs:
         with:
           repository: lurk-lab/lurkscript
           path: lurkscript
-          ref: 'remove-set-panic-hook'
           token: ${{ secrets.REPO_TOKEN }}
       - name: Install Lurkscript
         run: |
