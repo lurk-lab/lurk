@@ -341,7 +341,7 @@ ascent! {
     // If expr is a sym but not a built-in, look it up.
     ingress(env), lookup0(env, expr, env) <-- eval_input(expr, env), if expr.is_sym();
 
-    // Unbound variable: If env is nil during lookup0, var is unbound. Return an an error.
+    // Unbound variable: If env is nil during lookup0, var is unbound. Return an error.
     eval(var, outer_env, Ptr(Tag::Err.elt(), LE::zero())) <-- lookup0(outer_env, var, env), if env.is_nil();
 
     // If env is a cons, ingress the first binding.
@@ -637,7 +637,7 @@ ascent! {
         eval_input(expr, env), cons_rel(op, rest, expr), if op.is_if(),
         cons_rel(cond, branches, rest);
 
-    // Signal: Evaled condition is not nil: evaluate the a branch.
+    // Signal: Evaled condition is not nil: evaluate the branch.
     eval_input(a, env) <--
         eval_input(expr, env), cons_rel(op, rest, expr), if op.is_if(),
         cons_rel(cond, branches, rest), eval(cond, env, evaled_cond),
