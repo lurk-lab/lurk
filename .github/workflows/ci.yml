@@ -36,9 +36,11 @@ jobs:
         run: |
           mkdir .ci-bin
           cd .ci-bin
-          pnpm config set global-bin-dir "$(pwd)"
-          echo "$(pwd)" >> $GITHUB_PATH
+          CI_BINDIR="$(pwd)"
+          echo "$CI_BINDIR" >> $GITHUB_PATH
           cd ../lurkscript
+          npm install
+          pnpm config set global-bin-dir "$CI_BINDIR"
           pnpm install
           pnpm -r build
           pnpm install-cli
