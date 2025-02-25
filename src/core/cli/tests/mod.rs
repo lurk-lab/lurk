@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use crate::core::cli::{
     config::{set_config_if_unset, Config},
     repl::Repl,
@@ -46,6 +48,18 @@ fn test_lib_ls() {
     set_config_if_unset(Config::default());
     let mut repl = Repl::new_native(false);
     assert!(repl.load_file("lib/tests.ls".into(), false).is_ok());
+}
+
+#[ignore]
+#[test]
+fn test_lib_ls_lurkscript() {
+    set_config_if_unset(Config::default());
+    let output = Command::new("lurkscript")
+        .arg("lib/tests.ls")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
 }
 
 #[ignore]
