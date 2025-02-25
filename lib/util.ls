@@ -20,8 +20,8 @@ def(todo, x => { emit(list(todo.key, x));
                  BREAK()
                })
 
-def(error, data => {
-  emit(list(error.key, data))
+def(err, data => {
+  emit(list(error.key, data));
   // this will error
   BREAK()
 })

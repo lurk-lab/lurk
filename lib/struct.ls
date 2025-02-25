@@ -6,7 +6,7 @@ def(alistStruct, function (fields) {
   return function (op) {
     if (op === 'new'.key) {
       return function (vals) {
-        const alist = emit(zip(fields, vals));
+        const alist = zip(fields, vals);
         field => cdr(assoc(field, alist))
       }
     }

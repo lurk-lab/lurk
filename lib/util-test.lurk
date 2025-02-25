@@ -4,7 +4,7 @@
 !(assert-error (todo :rest-of-owl))
 
 ;; error
-!(assert-error (error :nasty 123))
+!(assert-error (error :nasty))
 
 ;; assert_
 !(assert-eq 9 (assert_ 9))

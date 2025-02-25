@@ -3,7 +3,7 @@ load.meta('util.ls')
 assertError(todo(restOfOwl.key))
 
 // error
-assertError(error(nasty.key, 123))
+assertError(error(nasty.key))
 
 // assert
 // FIXME: This requires #422 to be fixed.
