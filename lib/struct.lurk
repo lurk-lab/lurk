@@ -8,7 +8,7 @@
                        ;; However this allows an interface that abstracts the implementation.
                        (if (eq op :new)
                            (lambda (vals)
-                             (let ((alist (emit (zip fields vals))))
+                             (let ((alist (zip fields vals)))
                                (lambda (field)
                                  (cdr (assoc field alist)))))))))
 
