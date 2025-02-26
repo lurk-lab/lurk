@@ -22,7 +22,15 @@ use crate::{
 };
 
 use super::{
-    comm_data::CommData, debug::debug_mode, graphql_client, lurk_data::LurkData, microchain::{read_data, write_data, CallableData, ChainState, Request, Response}, paths::{commits_dir, proofs_dir}, proofs::{get_verifier_version, CachedProof, ChainProof, OpaqueChainProof, ProtocolProof}, rdg::rand_digest, repl::Repl
+    comm_data::CommData,
+    debug::debug_mode,
+    graphql_client,
+    lurk_data::LurkData,
+    microchain::{read_data, write_data, CallableData, ChainState, Request, Response},
+    paths::{commits_dir, proofs_dir},
+    proofs::{get_verifier_version, CachedProof, ChainProof, OpaqueChainProof, ProtocolProof},
+    rdg::rand_digest,
+    repl::Repl,
 };
 
 #[allow(clippy::type_complexity)]
@@ -1263,6 +1271,109 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         CommData::new(secret, payload, &repl.zstore)
     }
 
+    fn lurk_microchain_start<'a>(
+        repl: &'a mut Repl<F, C1, C2>,
+        args: &'a ZPtr<F>,
+        _dir: &'a Utf8Path,
+    ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
+        Box::pin(async move {
+            let [&addr_expr, &state_expr] = repl.take(args)?;
+            let (addr, _) = repl.reduce_aux(&addr_expr)?;
+            if addr.tag != Tag::Str {
+                bail!("Address must be a string");
+            }
+
+            let (state, _) = repl.reduce_aux(&state_expr)?;
+            if state.tag != Tag::Cons {
+                bail!("State must be a pair");
+            }
+
+            repl.memoize_dag(&state);
+
+            let (&chain_result, &next_callable) = repl.zstore.fetch_tuple11(&state);
+            let chain_result = LurkData::new(chain_result, &repl.zstore);
+            let callable_data = if next_callable.tag == Tag::Comm {
+                let comm_data = Self::build_comm_data(repl, next_callable.digest.as_slice());
+                CallableData::Comm(comm_data)
+            } else {
+                CallableData::Fun(LurkData::new(next_callable, &repl.zstore))
+            };
+
+            let genesis = ChainState {
+                chain_result,
+                callable_data,
+            };
+            let addr_str = repl.zstore.fetch_string(&addr);
+
+            let stream = &mut TcpStream::connect(addr_str)?;
+            write_data(stream, Request::Start(genesis))?;
+            let Response::IdSecret(id_secret) = read_data(stream)? else {
+                bail!("Could not read ID secret from server");
+            };
+
+            let id_digest = CommData::hash(&id_secret, &state, &mut repl.zstore);
+
+            let id = repl.zstore.intern_comm(id_digest);
+            Ok(id)
+        })
+    }
+
+    fn linera_microchain_start<'a>(
+        repl: &'a mut Repl<F, C1, C2>,
+        args: &'a ZPtr<F>,
+        _dir: &'a Utf8Path,
+    ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
+        Box::pin(async move {
+            let [&port, &chain_id, &state_expr] = repl.take(args)?;
+            let (port, _) = repl.reduce_aux(&port)?;
+            let (chain_id, _) = repl.reduce_aux(&chain_id)?;
+            if port.tag != Tag::Str || chain_id.tag != Tag::Str {
+                bail!("Port and ChainId must be a string");
+            }
+
+            let (state, _) = repl.reduce_aux(&state_expr)?;
+            if state.tag != Tag::Cons {
+                bail!("State must be a pair");
+            }
+
+            repl.memoize_dag(&state);
+
+            let (&chain_result, &next_callable) = repl.zstore.fetch_tuple11(&state);
+            let chain_result = LurkData::new(chain_result, &repl.zstore);
+            let callable_data = if next_callable.tag == Tag::Comm {
+                let comm_data = Self::build_comm_data(repl, next_callable.digest.as_slice());
+                CallableData::Comm(comm_data)
+            } else {
+                CallableData::Fun(LurkData::new(next_callable, &repl.zstore))
+            };
+
+            let genesis = ChainState {
+                chain_result,
+                callable_data,
+            };
+            let port = repl.zstore.fetch_string(&port);
+            let chain_id = repl.zstore.fetch_string(&chain_id);
+
+            let genesis = bincode::serialize(&genesis)?;
+            // TODO: FIX HARDCODE
+            let app_id = graphql_client::microchain_start(
+                &genesis,
+                "linera_assets/microchain_contract.wasm",
+                "linera_assets/microchain_service.wasm",
+            )
+            .await?;
+            let id_str = format!(
+                "http://127.0.0.1:{}/chains/{}/applications/{}",
+                port, chain_id, app_id
+            );
+            println!("Starting linera service on port {}", port);
+            graphql_client::linera_service(port).await;
+
+            let id = repl.zstore.intern_string(&id_str);
+            Ok(id)
+        })
+    }
+
     const MICROCHAIN_START: Self = Self {
         name: "microchain-start",
         summary: "Starts a new microchain and returns the resulting ID",
@@ -1278,46 +1389,12 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             "!(assert-eq state0 (open id))",
         ],
         returns: "The microchain's ID",
-        run: |repl, args, _dir| {
-            Box::pin(async move {
-                let [&addr_expr, &state_expr] = repl.take(args)?;
-                let (addr, _) = repl.reduce_aux(&addr_expr)?;
-                if addr.tag != Tag::Str {
-                    bail!("Address must be a string");
-                }
-                let (state, _) = repl.reduce_aux(&state_expr)?;
-                if state.tag != Tag::Cons {
-                    bail!("State must be a pair");
-                }
-
-                repl.memoize_dag(&state);
-
-                let (&chain_result, &next_callable) = repl.zstore.fetch_tuple11(&state);
-                let chain_result = LurkData::new(chain_result, &repl.zstore);
-                let callable_data = if next_callable.tag == Tag::Comm {
-                    let comm_data = Self::build_comm_data(repl, next_callable.digest.as_slice());
-                    CallableData::Comm(comm_data)
-                } else {
-                    CallableData::Fun(LurkData::new(next_callable, &repl.zstore))
-                };
-
-                let genesis = ChainState {
-                    chain_result,
-                    callable_data,
-                };
-
-                let addr_str = repl.zstore.fetch_string(&addr);
-                let stream = &mut TcpStream::connect(addr_str)?;
-                write_data(stream, Request::Start(genesis))?;
-                let Response::IdSecret(id_secret) = read_data(stream)? else {
-                    bail!("Could not read ID secret from server");
-                };
-
-                let id_digest = CommData::hash(&id_secret, &state, &mut repl.zstore);
-
-                let id = repl.zstore.intern_comm(id_digest);
-                Ok(id)
-            })
+        run: |repl, args, dir| {
+            if repl.linera {
+                Self::linera_microchain_start(repl, args, dir)
+            } else {
+                Self::lurk_microchain_start(repl, args, dir)
+            }
         },
     };
 
@@ -1367,6 +1444,66 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         },
     };
 
+    fn lurk_microchain_get_state<'a>(
+        repl: &'a mut Repl<F, C1, C2>,
+        args: &'a ZPtr<F>,
+        _dir: &'a Utf8Path,
+    ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
+        Box::pin(async move {
+            let [&addr_expr, &id_expr] = repl.take(args)?;
+            let (addr, _) = repl.reduce_aux(&addr_expr)?;
+            if addr.tag != Tag::Str {
+                bail!("Address must be a string");
+            }
+            let (id, _) = repl.reduce_aux(&id_expr)?;
+            let addr_str = repl.zstore.fetch_string(&addr);
+
+            let mut stream = TcpStream::connect(addr_str)?;
+            write_data(&mut stream, Request::GetState(id.digest))?;
+            let Response::State(chain_state) = read_data(&mut stream)? else {
+                bail!("Could not read state from server");
+            };
+            let state = chain_state.into_zptr(&mut repl.zstore);
+            Ok(state)
+        })
+    }
+
+    fn linera_args<'a>(
+        repl: &mut Repl<F, C1, C2>,
+        args: &'a ZPtr<F>,
+    ) -> Result<(String, String, String, ZPtr<F>)> {
+        let (&port, &rest) = repl.car_cdr(&args);
+        let (&chain_id, &rest) = repl.car_cdr(&rest);
+        let (&app_id, &rest) = repl.car_cdr(&rest);
+        let (port, _) = repl.reduce_aux(&port)?;
+        let (chain_id, _) = repl.reduce_aux(&chain_id)?;
+        let (app_id, _) = repl.reduce_aux(&app_id)?;
+        if port.tag != Tag::Str || chain_id.tag != Tag::Str || app_id.tag != Tag::Str {
+            bail!("All args (port, chain_id, app_id) must be strings");
+        }
+        let port = repl.zstore.fetch_string(&port);
+        let chain_id = repl.zstore.fetch_string(&chain_id);
+        let app_id = repl.zstore.fetch_string(&app_id);
+        Ok((port, chain_id, app_id, rest))
+    }
+
+    fn linera_microchain_get_state<'a>(
+        repl: &'a mut Repl<F, C1, C2>,
+        args: &'a ZPtr<F>,
+        _dir: &'a Utf8Path,
+    ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
+        Box::pin(async move {
+            let (port, chain_id, app_id, _) = Self::linera_args(repl, args)?;
+            let id = format!(
+                "http://127.0.0.1:{}/chains/{}/applications/{}",
+                port, chain_id, app_id
+            );
+            let chain_state = graphql_client::microchain_get_state(&id).await?;
+            let state = chain_state.into_zptr(&mut repl.zstore);
+            Ok(state)
+        })
+    }
+
     const MICROCHAIN_GET_STATE: Self = Self {
         name: "microchain-get-state",
         summary: "Returns the current state of a microchain",
@@ -1374,31 +1511,114 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         format: "!(microchain-get-state <addr_expr> <id_expr>)",
         example: &["!(microchain-get-state \"127.0.0.1:1234\" #c0x123)"],
         returns: "The microchain's latest state",
-        run: |repl, args, _dir| {
-            Box::pin(async move {
-                let [&addr_expr, &id_expr] = repl.take(args)?;
-                let (addr, _) = repl.reduce_aux(&addr_expr)?;
-                if addr.tag != Tag::Str {
-                    bail!("Address must be a string");
-                }
-                let (id, _) = repl.reduce_aux(&id_expr)?;
-                let addr_str = repl.zstore.fetch_string(&addr);
-
-                let chain_state = if repl.linera {
-                    graphql_client::microchain_get_state(&addr_str).await?
-                } else {
-                    let mut stream = TcpStream::connect(addr_str)?;
-                    write_data(&mut stream, Request::GetState(id.digest))?;
-                    let Response::State(chain_state) = read_data(&mut stream)? else {
-                        bail!("Could not read state from server");
-                    };
-                    chain_state
-                };
-                let state = chain_state.into_zptr(&mut repl.zstore);
-                Ok(state)
-            })
+        run: |repl, args, dir| {
+            if repl.linera {
+                Self::linera_microchain_get_state(repl, args, dir)
+            } else {
+                Self::lurk_microchain_get_state(repl, args, dir)
+            }
         },
     };
+
+    fn core_microchain_transition(
+        repl: &mut Repl<F, C1, C2>,
+        rest: &ZPtr<F>,
+    ) -> Result<(ZPtr<F>, ChainProof)> {
+        let (&current_state_expr, &call_args) = repl.car_cdr(&rest);
+        let (state, call_args) = Self::transition_call(repl, &current_state_expr, call_args)?;
+        if state.tag != Tag::Cons {
+            bail!("New state is not a pair");
+        }
+        let (&state_chain_result, &state_callable) = repl.zstore.fetch_tuple11(&state);
+
+        let proof_key: String = repl.prove_last_reduction()?;
+        let cached_proof = Self::load_cached_proof(&proof_key)?;
+        let crypto_proof: super::proofs::CryptoProof = cached_proof.crypto_proof;
+
+        let next_chain_result = LurkData::new(state_chain_result, &repl.zstore);
+        let next_callable = if state_callable.tag == Tag::Comm {
+            let comm_data = Self::build_comm_data(repl, state_callable.digest.as_slice());
+            CallableData::Comm(comm_data)
+        } else {
+            CallableData::Fun(LurkData::new(state_callable, &repl.zstore))
+        };
+
+        let chain_proof = ChainProof {
+            crypto_proof,
+            call_args,
+            next_chain_result,
+            next_callable,
+        };
+        Ok((state, chain_proof))
+    }
+
+    fn lurk_microchain_transition<'a>(
+        repl: &'a mut Repl<F, C1, C2>,
+        args: &'a ZPtr<F>,
+        _dir: &'a Utf8Path,
+    ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
+        Box::pin(async move {
+            let (&addr_expr, rest) = repl.car_cdr(args);
+            let (&id_expr, &rest) = repl.car_cdr(rest);
+            let (addr, _) = repl.reduce_aux(&addr_expr)?;
+            if addr.tag != Tag::Str {
+                bail!("Address must be a string");
+            }
+            let (id, _) = repl.reduce_aux(&id_expr)?;
+
+            let (state, chain_proof) = Self::core_microchain_transition(repl, &rest)?;
+
+            let addr_str = repl.zstore.fetch_string(&addr);
+            let stream = &mut TcpStream::connect(addr_str)?;
+            write_data(stream, Request::Transition(id.digest, chain_proof))?;
+            match read_data::<Response>(stream)? {
+                Response::ProofAccepted => {
+                    println!("Proof accepted by the server");
+                    Ok(state)
+                }
+                Response::ProofVerificationFailed(verifier_version) => {
+                    let mut msg = "Proof verification failed".to_string();
+                    if verifier_version != get_verifier_version() {
+                        msg.push_str(
+                            "\nWarning: proof was created for a different verifier version",
+                        );
+                    }
+                    bail!(msg);
+                }
+                _ => bail!("Bad server response"),
+            }
+        })
+    }
+
+    fn linera_microchain_transition<'a>(
+        repl: &'a mut Repl<F, C1, C2>,
+        args: &'a ZPtr<F>,
+        _dir: &'a Utf8Path,
+    ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
+        Box::pin(async move {
+            let (port, chain_id, app_id, rest) = Self::linera_args(repl, args)?;
+            let id = format!(
+                "http://127.0.0.1:{}/chains/{}/applications/{}",
+                port, chain_id, app_id
+            );
+
+            let (state, chain_proof) = Self::core_microchain_transition(repl, &rest)?;
+
+            let data = bincode::serialize(&chain_proof)?;
+            let hash = graphql_client::publish_data_blob(&port, chain_id, data).await?;
+            let res = graphql_client::microchain_transition(&id, hash).await;
+            match res {
+                Ok(_) => {
+                    println!("Proof accepted by the server");
+                    Ok(state)
+                }
+                Err(_) => {
+                    let msg = "Proof verification failed".to_string();
+                    bail!(msg);
+                }
+            }
+        })
+    }
 
     const MICROCHAIN_TRANSITION: Self = Self {
         name: "microchain-transition",
@@ -1408,70 +1628,12 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         format: "!(microchain-transition <addr_expr> <id_expr> <state_expr> <arg1_expr> ...)",
         example: &["!(microchain-transition \"127.0.0.1:1234\" #c0x123 state arg0 arg1)"],
         returns: "The new state",
-        run: |repl, args, _dir| {
-            Box::pin(async move {
-                let (&addr_expr, rest) = repl.car_cdr(args);
-                let (&id_expr, &rest) = repl.car_cdr(rest);
-                let (addr, _) = repl.reduce_aux(&addr_expr)?;
-                if addr.tag != Tag::Str {
-                    bail!("Address must be a string");
-                }
-                let (id, _) = repl.reduce_aux(&id_expr)?;
-                let (&current_state_expr, &call_args) = repl.car_cdr(&rest);
-                let (state, call_args) =
-                    Self::transition_call(repl, &current_state_expr, call_args)?;
-                if state.tag != Tag::Cons {
-                    bail!("New state is not a pair");
-                }
-                let (&state_chain_result, &state_callable) = repl.zstore.fetch_tuple11(&state);
-
-                let proof_key = repl.prove_last_reduction()?;
-                let cached_proof = Self::load_cached_proof(&proof_key)?;
-                let crypto_proof = cached_proof.crypto_proof;
-
-                let next_chain_result = LurkData::new(state_chain_result, &repl.zstore);
-                let next_callable = if state_callable.tag == Tag::Comm {
-                    let comm_data = Self::build_comm_data(repl, state_callable.digest.as_slice());
-                    CallableData::Comm(comm_data)
-                } else {
-                    CallableData::Fun(LurkData::new(state_callable, &repl.zstore))
-                };
-
-                let chain_proof = ChainProof {
-                    crypto_proof,
-                    call_args,
-                    next_chain_result,
-                    next_callable,
-                };
-                let addr_str = repl.zstore.fetch_string(&addr);
-
-                if repl.linera {
-                    // write chain_proof to a temp file
-                    let data = bincode::serialize(&chain_proof)?;
-                    let hash = graphql_client::publish_data_blob(&addr_str, "chain_id".into(), data).await;
-                    // graphql_client::microchain_get_state(&addr_str).await?
-                    todo!()
-                } else {
-                    let stream = &mut TcpStream::connect(addr_str)?;
-                    write_data(stream, Request::Transition(id.digest, chain_proof))?;
-                    match read_data::<Response>(stream)? {
-                        Response::ProofAccepted => {
-                            println!("Proof accepted by the server");
-                            Ok(state)
-                        }
-                        Response::ProofVerificationFailed(verifier_version) => {
-                            let mut msg = "Proof verification failed".to_string();
-                            if verifier_version != get_verifier_version() {
-                                msg.push_str(
-                                    "\nWarning: proof was created for a different verifier version",
-                                );
-                            }
-                            bail!(msg);
-                        }
-                        _ => bail!("Bad server response"),
-                    }    
-                }
-            })
+        run: |repl, args, dir| {
+            if repl.linera {
+                Self::linera_microchain_transition(repl, args, dir)
+            } else {
+                Self::lurk_microchain_transition(repl, args, dir)
+            }
         },
     };
 

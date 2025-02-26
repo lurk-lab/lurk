@@ -1,0 +1,7 @@
+mutation PublishDataBlob($chainId: ChainId!, $bytes: [Int!]!) {
+    publishDataBlob(chainId: $chainId, bytes: $bytes)
+}
+
+mutation MicrochainStart($chainId: ChainId!, $bytes: [Int!]!) {
+    publishDataBlob(chainId: $chainId, bytes: $bytes)
+}

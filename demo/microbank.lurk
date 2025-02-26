@@ -216,3 +216,13 @@
 
 ; !(defq s13 !(transition s7 :audit))
 ; !(assert-eq  :pass (car s13))
+
+!(def port "8081")
+!(def chain-id "e476187f6ddfeb9d588c7b45d3df334d5501d6499b3f9ad5595cae86cce16a65")
+!(defq id !(microchain-start port chain-id s0))
+; !(defq s1 !(microchain-transition port chain-id app-id s0 :about))
+; !(def alice-key (make-pub-key "Alice" !(rand)))
+; !(defq s2 !(microchain-transition port chain-id app-id s1 (list :create-account alice-key)))
+; !(assert-eq :ok (caar s2))
+; !(def alice (cadar s2))
+; !(defq s3 !(microchain-transition port chain-id app-id s2 (list :grant 1000 alice)))
