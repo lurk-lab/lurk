@@ -1,0 +1,185 @@
+root@linera1:~/lurk# cd /root/.config/linera/ && rm -rf wallet.* && cd /root/lurk/
+root@linera1:~/lurk# linera wallet init --faucet http://100.119.232.41:8080 --with-new-chain
+2025-02-27T04:22:38.022072Z  INFO linera::main: linera: Requesting a new chain for owner e11d0218915bcb65fcf503c91b94dbfcfa6d89405fadc52a8a3e2f12f77ced7f using the faucet at address http://100.119.232.41:8080
+4b38d8d99ba41548988b707a7290eca029ce11783f6052126395bc426c24799c
+dad01517c7a3c428ea903253a9e59964e8db06d323a9bd3f4c74d6366832bdbf020000000000000000000000
+6abd758f389d44ce6c1bcf912ef427bd3ab47a71f0a0110c2332e9031769ac97
+2025-02-27T04:22:38.167881Z  INFO linera::main: linera: Initialized wallet based on data provided by the faucet.
+The current epoch is 0.
+The genesis config hash is 468eb055cc1886d6944e4161399cefa3d7201289448808cc3fd2d3b1dd33f035
+2025-02-27T04:22:38.168484Z  INFO linera::main: linera: Wallet initialized in 146 ms
+2025-02-27T04:22:38.169037Z  INFO linera::main: linera: Wallet initialized in 289 ms
+root@linera1:~/lurk# linera wallet show
+╭──────────────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────╮
+│ Chain ID                                                         ┆ Latest Block                                                                         │
+╞══════════════════════════════════════════════════════════════════╪══════════════════════════════════════════════════════════════════════════════════════╡
+│ 4b38d8d99ba41548988b707a7290eca029ce11783f6052126395bc426c24799c ┆ Public Key:         aa09748ce3abe93ca4564ff720a048f855797dac6ef6f3ef3d95e7091e7d5a06 │
+│                                                                  ┆ Owner:              e11d0218915bcb65fcf503c91b94dbfcfa6d89405fadc52a8a3e2f12f77ced7f │
+│                                                                  ┆ Block Hash:         -                                                                │
+│                                                                  ┆ Timestamp:          2025-02-27 04:22:38.051455                                       │
+│                                                                  ┆ Next Block Height:  0                                                                │
+╰──────────────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────╯
+2025-02-27T04:22:41.820363Z  INFO linera::main: linera: Wallet shown in 0 ms
+root@linera1:~/lurk# OWNER=$(linera keygen)
+2025-02-27T04:22:53.447224Z  INFO linera::main: linera: Key generated in 0 ms
+root@linera1:~/lurk# echo $OWNER 
+136fcd44d7d96f674381b116f5409c1d465815c4385b129ab16abff3dbb72eb8
+root@linera1:~/lurk# cargo run --bin lurk -- --linera
+warning: /root/lurk/Cargo.toml: `default-features` is ignored for reqwest, since `default-features` was not specified for `workspace.dependencies.reqwest`, this could become a hard error in the future
+   Compiling lurk v0.5.0 (/root/lurk)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 19.58s
+     Running `target/debug/lurk --linera`
+commit: 2025-02-25 f43310e0cf847b51a738c9b1585df0a385aa87fb
+Lurk REPL welcomes you.
+lurk-user> !(load "demo/microbank.lurk")
+Loading /root/lurk/demo/microbank.lurk
+Loading /root/lurk/demo/../lib/lib.lurk
+Loading /root/lurk/demo/../lib/macros.lurk
+Loading /root/lurk/demo/../lib/macro.lurk
+Loading /root/lurk/demo/../lib/util.lurk
+not
+caar
+cadr
+cdar
+cddr
+caaar
+caadr
+cadar
+caddr
+cdaar
+cdadr
+cddar
+cdddr
+todo
+error
+assert
+ensure
+member?
+position
+nth
+nth-cdr
+nth
+append
+revappend
+getf
+set-property-aux
+set-property
+update-property
+fold-properties
+map-properties
+assoc
+length
+reverse
+zip
+sort
+map
+permute
+expt
+compose
+applyx
+not
+fold
+t
+not-immediate?
+immediate?
+bind-macro
+macroexpand-1
+macroexpand
+macroexpand-all
+evl
+evl1
+t
+macro-env
+macro-env
+macro-env
+macro-env
+macro-env
+macro-env
+t
+t
+help-message
+make-pub-key
+derive-account
+authenticate
+maybe-add-account
+create-account
+balance
+authenticate-account
+authenticate-owner
+check-balance
+grant
+transfer
+audit
+invoke
+handle-input
+process-option
+process-options
+initial-state
+t
+make-bank
+genesis
+bank-id
+owner
+about
+options
+no-account
+s0
+port
+chain-id
+owner
+other-owner
+Creating application...
+Starting linera service --port 8100
+2025-02-27T04:24:07.208606Z  INFO linera::main:node_service{port=8100}: linera_service::node_service: GraphiQL IDE: http://localhost:8100
+2025-02-27T04:24:07.223688Z  INFO linera::main:node_service{port=8100}: linera_core::client: Received 0 certificates from 1 validator(s).
+2025-02-27T04:24:07.232958Z  INFO linera::main:node_service{port=8100}: linera_core::client: Received 0 certificates from 1 validator(s).
+2025-02-27T04:24:07.234693Z  INFO linera::main:node_service{port=8100}: linera_core::client: Connected to validator ff87a0b0a3c7c0ce827e9cada5ff79e75a44a0633bfcb5b50f99307ddb26b337
+2025-02-27T04:24:07.264051Z  INFO linera::main:node_service{port=8100}: linera_client::chain_listener: Done processing inbox. 1 blocks created.
+2025-02-27T04:24:07.265287Z  INFO linera::main:node_service{port=8100}: linera_client::chain_listener: Received new notification: Notification { chain_id: 4b38d8d99ba41548, reason: NewBlock { height: BlockHeight(3), hash: f4f2a950a30b6162 } }
+Starting microchain...
+querying: mutation {
+            start(
+                accounts: [
+                    "136fcd44d7d96f674381b116f5409c1d465815c4385b129ab16abff3dbb72eb8",
+                    "3a42628403aef3762f9cc88abdc95c4fe36cd3e9c475bd82f064b0e4881ff789"
+                ],
+                chainState: "bdf5cdfa9c3bed1fb6d92b8145bf50101964cbd7e0734818a846e9e2f83b2fbb"
+            )
+        }
+2025-02-27T04:24:08.897100Z  INFO linera::main:node_service{port=8100}: linera_client::chain_listener: Received new notification: Notification { chain_id: 4b38d8d99ba41548, reason: NewBlock { height: BlockHeight(4), hash: a325744f032e229f } }
+2025-02-27T04:24:08.927846Z  INFO linera::main:node_service{port=8100}: linera_core::client: Received 0 certificates from 1 validator(s).
+2025-02-27T04:24:08.948483Z  INFO linera::main:node_service{port=8100}: linera_core::client: Received 0 certificates from 1 validator(s).
+Executing queries...
+2025-02-27T04:24:08.959769Z  INFO linera::main:node_service{port=8100}: linera_core::client: Connected to validator ff87a0b0a3c7c0ce827e9cada5ff79e75a44a0633bfcb5b50f99307ddb26b337
+querying: query {
+            chains {
+                entry(key: "136fcd44d7d96f674381b116f5409c1d465815c4385b129ab16abff3dbb72eb8") {
+                    value {
+                        messageId chainId
+                    }
+                }
+            }
+        }
+Finishing...
+2025-02-27T04:24:09.079696Z  INFO linera::main: linera: Linking chain 8a2be95067441331749831c9fd30c79494669159f6ab8b4842a017cbf67d0a31 to its corresponding key in the wallet, owned by 136fcd44d7d96f674381b116f5409c1d465815c4385b129ab16abff3dbb72eb8
+8a2be95067441331749831c9fd30c79494669159f6ab8b4842a017cbf67d0a31
+2025-02-27T04:24:09.085525Z  INFO linera::main: linera: Chain linked to owner in 5 ms
+Starting linera service --port 8100
+2025-02-27T04:24:09.126121Z  INFO linera::main:node_service{port=8100}: linera_service::node_service: GraphiQL IDE: http://localhost:8100
+2025-02-27T04:24:09.144501Z  INFO linera::main:node_service{port=8100}: linera_core::client: Received 0 certificates from 1 validator(s).
+2025-02-27T04:24:09.147789Z  INFO linera::main:node_service{port=8100}: linera_core::client: Received 0 certificates from 1 validator(s).
+2025-02-27T04:24:09.157124Z  INFO linera::main:node_service{port=8100}: linera_core::client: Received 0 certificates from 1 validator(s).
+2025-02-27T04:24:09.158544Z  INFO linera::main:node_service{port=8100}: linera_client::chain_listener: Done processing inbox. 0 blocks created.
+2025-02-27T04:24:09.158568Z  INFO linera::main:node_service{port=8100}: linera_core::client: Connected to validator ff87a0b0a3c7c0ce827e9cada5ff79e75a44a0633bfcb5b50f99307ddb26b337
+2025-02-27T04:24:09.167920Z  INFO linera::main:node_service{port=8100}: linera_core::client: Received 0 certificates from 1 validator(s).
+2025-02-27T04:24:09.169791Z  INFO linera::main:node_service{port=8100}: linera_core::client: Connected to validator ff87a0b0a3c7c0ce827e9cada5ff79e75a44a0633bfcb5b50f99307ddb26b337
+Microchain started with chainId: 8a2be95067441331749831c9fd30c79494669159f6ab8b4842a017cbf67d0a31, messageId: 4b38d8d99ba41548988b707a7290eca029ce11783f6052126395bc426c24799c040000000000000000000000
+app-id
+t
+lurk-user> 2025-02-27T04:24:23.600966Z  INFO linera::main:node_service{port=8100}: linera_client::chain_listener: Done processing inbox. 1 blocks created.
+2025-02-27T04:24:23.601837Z  INFO linera::main:node_service{port=8100}: linera_client::chain_listener: Received new notification: Notification { chain_id: 8a2be95067441331, reason: NewBlock { height: BlockHeight(0), hash: d34f784179542143 } }
+
+lurk-user> !(def microchain-id "8a2be95067441331749831c9fd30c79494669159f6ab8b4842a017cbf67d0a31")
+microchain-id
+lurk-user> app-id
+[1 iteration] => "ed33c5b0565d73cb82ff194516e6e30a1b21fa04ca9aa28064191fef40e69f874527f8d4c2fe26f2b3034314fa7421ff1256ac35cee53efe97853108c7b4f6964b38d8d99ba41548988b707a7290eca029ce11783f6052126395bc426c24799c020000000000000000000000"

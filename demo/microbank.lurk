@@ -217,10 +217,14 @@
 ; !(defq s13 !(transition s7 :audit))
 ; !(assert-eq  :pass (car s13))
 
-!(def port "8081")
-!(def chain-id "e476187f6ddfeb9d588c7b45d3df334d5501d6499b3f9ad5595cae86cce16a65")
-!(defq id !(microchain-start port chain-id s0))
-; !(defq s1 !(microchain-transition port chain-id app-id s0 :about))
+; !(load "demo/microbank.lurk")
+
+!(def port "8100")
+!(def chain-id "e2d00d9dc0d21de01c2edc0b46bb1ae9f0b75a6880295315b818eee2db46bf83")
+!(def owner "3224c740131cf516e38057bd5e6bbd89f287c29e788e71d4e55542326f7b9592")
+!(def other-owner "3a42628403aef3762f9cc88abdc95c4fe36cd3e9c475bd82f064b0e4881ff789")
+!(defq app-id !(microchain-start port chain-id owner other-owner s0))
+; !(defq s1 !(microchain-transition port microchain-id app-id s0 :about))
 ; !(def alice-key (make-pub-key "Alice" !(rand)))
 ; !(defq s2 !(microchain-transition port chain-id app-id s1 (list :create-account alice-key)))
 ; !(assert-eq :ok (caar s2))

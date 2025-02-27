@@ -68,17 +68,45 @@ pub(crate) async fn publish_data_blob(
         .publish_data_blob)
 }
 
-pub(crate) async fn microchain_start(genesis: &[u8], contract: &str, service: &str) -> Result<String, Error> {
+pub(crate) async fn linera_service_kill() -> Result<(), Error> {
+    Command::new("pkill")
+        .arg("-f")
+        .arg("linera.*service")
+        .output()
+        .await?;
+
+    Ok(())
+}
+
+/// Spawn a background task that runs the linera service
+pub(crate) async fn linera_service(port: &str) -> Result<(), Error> {
+    println!("Starting linera service --port {}", port);
+
+    Command::new("sh")
+        .arg("-c")
+        .arg(format!("linera service --port {} &", port))
+        .status()
+        .await?;
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    Ok(())
+}
+
+pub(crate) async fn create_lurk_microchain(
+    port: &str,
+    genesis: &[u8],
+    contract: &str,
+    service: &str,
+) -> Result<(String, String), Error> {
     use tempfile::tempdir;
-    
+
     // Create a temporary file to store the genesis data
     let temp_dir = tempdir()?;
     let genesis_path = temp_dir.path().join("genesis_state");
     fs::write(&genesis_path, &genesis).await?;
 
     let output = Command::new("linera")
-        .arg("--with-wallet")
-        .arg("0")
         .arg("publish-data-blob")
         .arg(genesis_path)
         .output()
@@ -94,15 +122,11 @@ pub(crate) async fn microchain_start(genesis: &[u8], contract: &str, service: &s
     // Extract the GENESIS_BLOB_ID from the output
     let genesis_blob_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    let json_arg = format!("{{ \"chain_state\": \"{}\" }}", genesis_blob_id);
     let output = Command::new("linera")
-        .arg("--with-wallet")
-        .arg("0")
+        .arg("--wait-for-outgoing-messages")
         .arg("publish-and-create")
         .arg(contract)
-        .arg(service) // Handle the brace expansion from the shell command
-        .arg("--json-argument")
-        .arg(json_arg)
+        .arg(service)
         .output()
         .await?;
 
@@ -115,32 +139,154 @@ pub(crate) async fn microchain_start(genesis: &[u8], contract: &str, service: &s
 
     // Extract the APP_ID from the output
     let app_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(app_id)
+
+    linera_service(port).await?;
+
+    Ok((genesis_blob_id, app_id))
 }
 
-/// Spawn a background task that runs the linera service
-pub(crate) async fn linera_service(port: String) -> tokio::task::JoinHandle<()> {
-    let handle = tokio::spawn(async move {
-        let result = Command::new("linera")
-            .arg("--with-wallet")
-            .arg("0")
-            .arg("service")
-            .arg("--port")
-            .arg(port)
-            .spawn()
-            .expect("Failed to start linera service")
-            .wait()
-            .await;
-            
-        if let Err(e) = result {
-            eprintln!("Linera service exited with error: {}", e);
+async fn execute_start_mutation(
+    gql_url: &str,
+    owner: &str,
+    other_owner: &str,
+    genesis_blob_id: &str,
+) -> Result<(), Error> {
+    let client = reqwest::Client::new();
+    let mutation = format!(
+        r#"mutation {{
+            start(
+                accounts: [
+                    "{owner}",
+                    "{other_owner}"
+                ],
+                chainState: "{genesis_blob_id}"
+            )
+        }}"#
+    );
+
+    println!("querying: {}", mutation);
+
+    client
+        .post(gql_url)
+        .body(
+            serde_json::json!({
+                "query": mutation
+            })
+            .to_string(),
+        )
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+async fn execute_chains_query(gql_url: &str, owner: &str) -> Result<(String, String), Error> {
+    let client = reqwest::Client::new();
+    let query = format!(
+        r#"query {{
+            chains {{
+                entry(key: "{owner}") {{
+                    value {{
+                        messageId chainId
+                    }}
+                }}
+            }}
+        }}"#
+    );
+
+    println!("querying: {}", query);
+
+    let response = client
+        .post(gql_url)
+        .body(
+            serde_json::json!({
+                "query": query
+            })
+            .to_string(),
+        )
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+    /*
+    {
+      "data": {
+        "chains": {
+          "entry": {
+            "value": [
+              {
+                "messageId": "779321493b4e76478132c39d5b4efbf09ca8b1db53eb99a07d3482315c70ed87160000000000000000000000",
+                "chainId": "6c8e32aff3999c2a143e49474ac870147540753244502e5a20f945a53c458957"
+              }
+            ]
+          }
         }
-    });
+      }
+    }
+
+    */
+    let result: serde_json::Value = response.json().await?;
+    let chain_id = result["data"]["chains"]["entry"]["value"][0]["chainId"]
+        .as_str()
+        .ok_or(Error::String("Could not extract chainId".to_string()))?
+        .to_string();
+
+    let message_id = result["data"]["chains"]["entry"]["value"][0]["messageId"]
+        .as_str()
+        .ok_or(Error::String("Could not extract messageId".to_string()))?
+        .to_string();
+
+    Ok((chain_id, message_id))
+}
+
+async fn setup_microchain(owner: &str, message_id: &str, port: &str) -> Result<(), Error> {
+    linera_service_kill().await?;
+
+    Command::new("linera")
+        .args(&["assign", "--owner", owner, "--message-id", message_id])
+        .status()
+        .await?;
+
+    linera_service(port).await?;
+
+    Ok(())
+}
+
+pub async fn microchain_start(
+    port: &str,
+    chain: &str,
+    owner: &str,
+    other_owner: &str,
+    genesis: &[u8],
+    contract: &str,
+    service: &str,
+) -> Result<String, Error> {
+    linera_service_kill().await?;
     
-    // Give the service a moment to start up
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    
-    handle
+    println!("Creating application...");
+    let (genesis_blob_id, app_id) =
+        create_lurk_microchain(port, genesis, contract, service).await?;
+
+    let gql_url = format!(
+        "http://localhost:{}/chains/{}/applications/{}",
+        port, chain, app_id
+    );
+
+    println!("Starting microchain...");
+    execute_start_mutation(&gql_url, owner, other_owner, &genesis_blob_id).await?;
+    println!("Executing queries...");
+    let (microchain_id, message_id) = execute_chains_query(&gql_url, &owner).await?;
+    println!("Finishing...");
+    setup_microchain(&owner, &message_id, &port).await?;
+
+    println!(
+        "Microchain started with chainId: {}, messageId: {}",
+        microchain_id, message_id
+    );
+    println!("!(def microchain-id \"{}\")", microchain_id);
+    println!("!(def app-id \"{}\")", app_id);
+
+    Ok(app_id)
 }
 
 #[derive(GraphQLQuery)]

@@ -1324,11 +1324,13 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         _dir: &'a Utf8Path,
     ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
         Box::pin(async move {
-            let [&port, &chain_id, &state_expr] = repl.take(args)?;
+            let [&port, &chain, &owner, &other_owner, &state_expr] = repl.take(args)?;
             let (port, _) = repl.reduce_aux(&port)?;
-            let (chain_id, _) = repl.reduce_aux(&chain_id)?;
-            if port.tag != Tag::Str || chain_id.tag != Tag::Str {
-                bail!("Port and ChainId must be a string");
+            let (chain, _) = repl.reduce_aux(&chain)?;
+            let (owner, _) = repl.reduce_aux(&owner)?;
+            let (other_owner, _) = repl.reduce_aux(&other_owner)?;
+            if port.tag != Tag::Str || chain.tag != Tag::Str || owner.tag != Tag::Str || other_owner.tag != Tag::Str {
+                bail!("All args excetpt state must be strings");
             }
 
             let (state, _) = repl.reduce_aux(&state_expr)?;
@@ -1352,25 +1354,25 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                 callable_data,
             };
             let port = repl.zstore.fetch_string(&port);
-            let chain_id = repl.zstore.fetch_string(&chain_id);
+            let chain = repl.zstore.fetch_string(&chain);
+            let owner = repl.zstore.fetch_string(&owner);
+            let other_owner = repl.zstore.fetch_string(&other_owner);
 
             let genesis = bincode::serialize(&genesis)?;
-            // TODO: FIX HARDCODE
             let app_id = graphql_client::microchain_start(
+                &port,
+                &chain,
+                &owner,
+                &other_owner,
                 &genesis,
-                "linera_assets/microchain_contract.wasm",
-                "linera_assets/microchain_service.wasm",
+                // Fix: don't hardcode or make constants
+                "linera_assets/lurk_microchain_contract.wasm",
+                "linera_assets/lurk_microchain_service.wasm",
             )
             .await?;
-            let id_str = format!(
-                "http://127.0.0.1:{}/chains/{}/applications/{}",
-                port, chain_id, app_id
-            );
-            println!("Starting linera service on port {}", port);
-            graphql_client::linera_service(port).await;
 
-            let id = repl.zstore.intern_string(&id_str);
-            Ok(id)
+            let app_id = repl.zstore.intern_string(&app_id);
+            Ok(app_id)
         })
     }
 
@@ -1608,12 +1610,12 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             let hash = graphql_client::publish_data_blob(&port, chain_id, data).await?;
             let res = graphql_client::microchain_transition(&id, hash).await;
             match res {
-                Ok(_) => {
-                    println!("Proof accepted by the server");
+                Ok(res) => {
+                    println!("Proof accepted by the server: {}", res);
                     Ok(state)
                 }
-                Err(_) => {
-                    let msg = "Proof verification failed".to_string();
+                Err(e) => {
+                    let msg = format!("Proof verification failed: {}", e);
                     bail!(msg);
                 }
             }
