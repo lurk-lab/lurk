@@ -7,7 +7,7 @@ use sp1_stark::{
     Chip,
 };
 
-use crate::air::builder::{LookupBuilder, ProvideRecord, RequireRecord};
+use crate::air::builder::{LookupBuilder, RequireRecord};
 use crate::gadgets::bytes::trace::BytesChip;
 
 use super::{
@@ -17,7 +17,7 @@ use super::{
     func_chip::FuncChip,
     memory::MemChip,
     provenance::DEPTH_W,
-    relations::{MemoryRelation, OuterCallRelation},
+    relations::OuterCallRelation,
 };
 
 pub enum LairChip<F, C1: Chipset<F>, C2: Chipset<F>> {

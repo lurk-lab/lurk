@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use p3_baby_bear::BabyBear as F;
 use p3_field::AbstractField;
-use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, SP1CoreOpts};
+use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
 use sp1_stark::{StarkGenericConfig, StarkMachine};
 
 use crate::air::debug::debug_chip_constraints_and_queries_with_sharding;
