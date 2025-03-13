@@ -182,21 +182,3 @@ opt-level = 3
 
 [patch.crates-io]
 p3-poseidon2 = { git = "https://github.com/lurk-lab/p3.git", branch = "sp1-v4" }
-
-# p3-air = { path = "../Plonky3/air" }
-# p3-field = { path = "../Plonky3/field"}
-# p3-commit = { path = "../Plonky3/commit"}
-# p3-matrix = { path = "../Plonky3/matrix"}
-# p3-baby-bear = { path = "../Plonky3/baby-bear" }
-# p3-util = { path = "../Plonky3/util"}
-# p3-challenger = { path = "../Plonky3/challenger"}
-# p3-mds = { path = "../Plonky3/mds"}
-# p3-symmetric = { path = "../Plonky3/symmetric"}
-# p3-uni-stark = { path = "../Plonky3/uni-stark"}
-# p3-maybe-rayon = { path = "../Plonky3/maybe-rayon"}
-
-# sp1-core-machine = { path = "../sp1/crates/core/machine"}
-# sp1-core-executor = { path = "../sp1/crates/core/executor"}
-# sp1-derive = { path = "../sp1/crates/derive"}
-# sp1-stark = { path = "../sp1/crates/stark"}
-# sp1-sdk = { path = "../sp1/crates/sdk"}
