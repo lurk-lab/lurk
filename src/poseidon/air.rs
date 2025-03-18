@@ -7,6 +7,7 @@ use std::iter::zip;
 
 use itertools::izip;
 use p3_air::{Air, AirBuilder, BaseAir};
+use p3_field::{AbstractField, PrimeField};
 use p3_matrix::Matrix;
 use p3_symmetric::Permutation;
 
@@ -20,6 +21,9 @@ impl<F, C: PoseidonConfig<WIDTH>, const WIDTH: usize> BaseAir<F> for Poseidon2Ch
 
 impl<AB: AirBuilder, C: PoseidonConfig<WIDTH, F = AB::F>, const WIDTH: usize> Air<AB>
     for Poseidon2Chip<C, WIDTH>
+where
+    AB::F: PrimeField,
+    <<AB as AirBuilder>::Expr as AbstractField>::F: PrimeField,
 {
     #[allow(non_snake_case)]
     fn eval(&self, builder: &mut AB) {

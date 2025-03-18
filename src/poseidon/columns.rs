@@ -8,7 +8,7 @@ use super::config::PoseidonConfig;
 use hybrid_array::Array;
 use p3_field::AbstractField;
 use p3_symmetric::Permutation;
-use sphinx_derive::AlignedBorrow;
+use sp1_derive::AlignedBorrow;
 
 /// The column layout for the chip.
 #[derive(Clone, Debug, AlignedBorrow)]

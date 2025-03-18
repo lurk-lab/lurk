@@ -4,7 +4,7 @@ use itertools::Itertools;
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, PrimeField32};
 use rustc_hash::FxHashMap;
-use sphinx_core::stark::StarkGenericConfig;
+use sp1_stark::StarkGenericConfig;
 use std::net::TcpStream;
 
 use crate::{

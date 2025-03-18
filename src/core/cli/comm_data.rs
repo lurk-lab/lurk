@@ -29,7 +29,7 @@ impl<F: Field> CommData<F> {
     }
 }
 
-impl<F: Hash + Eq + Default + Copy> CommData<F> {
+impl<F: Field + Hash + Eq + Default + Copy> CommData<F> {
     #[inline]
     pub(crate) fn new<C: Chipset<F>>(
         secret: [F; DIGEST_SIZE],

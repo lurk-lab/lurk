@@ -20,20 +20,23 @@ license = "MIT"
 [workspace.dependencies]
 rayon = "1.10.0"
 itertools = "0.13.0"
-p3-air = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-baby-bear = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-field = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-matrix = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-mds = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-commit = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-challenger = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-maybe-rayon = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-poseidon2 = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-symmetric = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-uni-stark = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-p3-util = { git = "https://github.com/argumentcomputer/Plonky3.git", branch = "sp1" }
-sphinx-core = { git = "https://github.com/argumentcomputer/sphinx.git", branch = "dev"}
-sphinx-derive = { git = "https://github.com/argumentcomputer/sphinx.git", branch = "dev" }
+p3-air = "0.2.0-succinct"
+p3-field = "0.2.0-succinct"
+p3-commit = "0.2.0-succinct"
+p3-matrix = "0.2.0-succinct"
+p3-baby-bear = { version = "0.2.0-succinct", features = ["nightly-features"] }
+p3-util = "0.2.0-succinct"
+p3-challenger = "0.2.0-succinct"
+p3-mds = "0.2.0-succinct"
+p3-poseidon2 = "0.2.0-succinct"
+p3-symmetric = "0.2.0-succinct"
+p3-uni-stark = "0.2.0-succinct"
+p3-maybe-rayon = "0.2.0-succinct"
+sp1-core-machine = "4.1.3"
+sp1-core-executor = "4.1.3"
+sp1-derive = "4.1.3"
+sp1-stark = "4.1.3"
+sp1-sdk = "4.1.3"
 anyhow = "1.0.72"
 ascent = { git = "https://github.com/argumentcomputer/ascent.git" }
 arc-swap = "1.7.1"
@@ -124,8 +127,11 @@ p3-maybe-rayon = { workspace = true }
 p3-poseidon2 = { workspace = true }
 p3-symmetric = { workspace = true }
 p3-util = { workspace = true }
-sphinx-core = { workspace = true }
-sphinx-derive = { workspace = true }
+sp1-core-machine = { workspace = true }
+sp1-core-executor = { workspace = true }
+sp1-derive = { workspace = true }
+sp1-stark = { workspace = true }
+sp1-sdk = { workspace = true }
 hashbrown = { workspace = true }
 
 loam-macros = { workspace = true }
@@ -173,3 +179,6 @@ loam=[]
 # Ascent will be compiled with -Copt-level=3 . This includes build dependencies.
 [profile.dev.package."ascent"]
 opt-level = 3
+
+[patch.crates-io]
+p3-poseidon2 = { git = "https://github.com/lurk-lab/p3.git", branch = "sp1-v4" }

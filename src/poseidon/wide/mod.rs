@@ -19,7 +19,7 @@ mod test {
     use p3_matrix::dense::RowMajorMatrix;
     use p3_matrix::Matrix;
     use p3_symmetric::Permutation;
-    use sphinx_derive::AlignedBorrow;
+    use sp1_derive::AlignedBorrow;
 
     struct Chip<C: PoseidonConfig<WIDTH>, const WIDTH: usize> {
         _marker: PhantomData<C>,

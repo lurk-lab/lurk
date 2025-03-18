@@ -2,12 +2,11 @@ use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use p3_baby_bear::BabyBear;
 use p3_field::AbstractField;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use sphinx_core::{
-    air::MachineAir,
-    stark::{LocalProver, StarkGenericConfig, StarkMachine},
-    utils::{BabyBearPoseidon2, SphinxCoreOpts},
+use sp1_stark::{
+    air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,
+    StarkGenericConfig, StarkMachine,
 };
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use lurk::{
     core::{
@@ -45,10 +44,10 @@ fn build_lurk_expr(arg: usize) -> String {
 
 fn setup<C: Chipset<BabyBear>>(
     arg: usize,
-    toplevel: &Toplevel<BabyBear, C, NoChip>,
+    toplevel: &Arc<Toplevel<BabyBear, C, NoChip>>,
 ) -> (
     List<BabyBear>,
-    FuncChip<'_, BabyBear, C, NoChip>,
+    FuncChip<BabyBear, C, NoChip>,
     QueryRecord<BabyBear>,
 ) {
     let code = build_lurk_expr(arg);
@@ -93,11 +92,14 @@ fn trace_generation(c: &mut Criterion) {
         toplevel
             .execute(lurk_main.func(), &args, &mut record, None)
             .unwrap();
+        let record = Arc::new(record);
         let lair_chips = build_lair_chip_vector(&lurk_main);
         b.iter(|| {
             lair_chips.par_iter().for_each(|func_chip| {
-                let shard = Shard::new(&record);
-                func_chip.generate_trace(&shard, &mut Default::default());
+                let shards = Shard::new_arc(&record);
+                assert_eq!(shards.len(), 1);
+                let shard = &shards[0];
+                func_chip.generate_trace(shard, &mut Default::default());
             })
         })
     });
@@ -111,21 +113,31 @@ fn verification(c: &mut Criterion) {
         toplevel
             .execute(lurk_main.func(), &args, &mut record, None)
             .unwrap();
-        let config = BabyBearPoseidon2::new();
         let machine = StarkMachine::new(
-            config,
+            BabyBearPoseidon2::new(),
             build_chip_vector(&lurk_main),
             record.expect_public_values().len(),
+            true,
         );
         let (pk, vk) = machine.setup(&LairMachineProgram);
         let mut challenger_p = machine.config().challenger();
-        let opts = SphinxCoreOpts::default();
-        let shard = Shard::new(&record);
-        let proof = machine.prove::<LocalProver<_, _>>(&pk, shard, &mut challenger_p, opts);
+        let opts = SP1CoreOpts::default();
+        let record = Arc::new(record);
+        let shards = Shard::new_arc(&record);
+        let prover = CpuProver::new(machine);
+        let proof = prover.prove(&pk, shards, &mut challenger_p, opts).unwrap();
 
         b.iter_batched(
-            || machine.config().challenger(),
-            |mut challenger| {
+            || {
+                StarkMachine::new(
+                    BabyBearPoseidon2::new(),
+                    build_chip_vector(&lurk_main),
+                    record.expect_public_values().len(),
+                    true,
+                )
+            },
+            |machine| {
+                let mut challenger = machine.config().challenger();
                 machine.verify(&vk, &proof, &mut challenger).unwrap();
             },
             BatchSize::SmallInput,
@@ -150,12 +162,14 @@ fn e2e(c: &mut Criterion) {
                     config,
                     build_chip_vector(&lurk_main),
                     record.expect_public_values().len(),
+                    true,
                 );
                 let (pk, _) = machine.setup(&LairMachineProgram);
                 let mut challenger_p = machine.config().challenger();
-                let opts = SphinxCoreOpts::default();
-                let shard = Shard::new(&record);
-                machine.prove::<LocalProver<_, _>>(&pk, shard, &mut challenger_p, opts);
+                let opts = SP1CoreOpts::default();
+                let shards = Shard::new(record);
+                let prover = CpuProver::new(machine);
+                prover.prove(&pk, shards, &mut challenger_p, opts).unwrap();
             },
             BatchSize::SmallInput,
         )

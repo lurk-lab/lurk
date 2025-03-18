@@ -12,10 +12,8 @@ use rustyline::{
     validate::{ValidationContext, ValidationResult, Validator},
     Completer, Editor, Helper, Highlighter, Hinter,
 };
-use sphinx_core::{
-    stark::{LocalProver, StarkGenericConfig},
-    utils::SphinxCoreOpts,
-};
+use sp1_stark::{CpuProver, StarkGenericConfig};
+use sp1_stark::{MachineProver, SP1CoreOpts};
 use std::{fmt::Debug, fs, io, io::Write, marker::PhantomData, process::Command, sync::Arc};
 
 use crate::{
@@ -150,7 +148,7 @@ impl FuncIndices {
 pub(crate) struct Repl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
     pub(crate) zstore: ZStore<F, C1>,
     pub(crate) queries: QueryRecord<F>,
-    pub(crate) toplevel: Toplevel<F, C1, C2>,
+    pub(crate) toplevel: Arc<Toplevel<F, C1, C2>>,
     func_indices: FuncIndices,
     pub(crate) env: ZPtr<F>,
     pub(crate) state: StateRcCell,
@@ -190,6 +188,7 @@ impl<C1: Chipset<BabyBear>, C2: Chipset<BabyBear>> Repl<BabyBear, C1, C2> {
     /// Generates a STARK proof for the latest Lurk reduction, persists it and
     /// returns the corresponding proof key
     pub(crate) fn prove_last_reduction(&mut self) -> Result<String> {
+        sp1_core_machine::utils::setup_logger();
         // make env DAG available so `IOProof` can carry it
         self.memoize_env_dag();
         let Some(public_values) = self.queries.public_values.as_ref() else {
@@ -219,10 +218,13 @@ impl<C1: Chipset<BabyBear>, C2: Chipset<BabyBear>> Repl<BabyBear, C1, C2> {
         };
         if must_prove {
             let challenger_v = &mut challenger_p.clone();
-            let shard = Shard::new(&self.queries);
-            let opts = SphinxCoreOpts::default();
-            let machine_proof = machine.prove::<LocalProver<_, _>>(&pk, shard, challenger_p, opts);
-            machine
+            // FIXME: factoring this out soon
+            let opts = SP1CoreOpts::default();
+            let shards = Shard::shard_with(self.queries.clone(), &opts);
+            let prover = CpuProver::new(machine);
+            let machine_proof = prover.prove(&pk, shards, challenger_p, opts)?;
+            let verifier_machine = new_machine(&self.toplevel);
+            verifier_machine
                 .verify(&vk, &machine_proof, challenger_v)
                 .expect("Proof verification failed");
             let crypto_proof: CryptoProof = machine_proof.into();

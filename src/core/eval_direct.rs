@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, PrimeField32};
 use rustc_hash::FxHashSet;
@@ -78,10 +80,11 @@ fn native_lurk_funcs<F: PrimeField32>(
 /// along with it:
 /// * A `ZStore` with the Lurk (and `Lang`) symbols already interned
 /// * All the `Lang` symbols in a `FxHashSet`
+#[allow(clippy::type_complexity)]
 pub fn build_lurk_toplevel<C2: Chipset<BabyBear>>(
     lang: Lang<BabyBear, C2>,
 ) -> (
-    Toplevel<BabyBear, LurkChip, C2>,
+    Arc<Toplevel<BabyBear, LurkChip, C2>>,
     ZStore<BabyBear, LurkChip>,
     FxHashSet<Symbol>,
 ) {
@@ -109,8 +112,9 @@ pub fn build_lurk_toplevel<C2: Chipset<BabyBear>>(
 }
 
 #[inline]
+#[allow(clippy::type_complexity)]
 pub fn build_lurk_toplevel_native() -> (
-    Toplevel<BabyBear, LurkChip, NoChip>,
+    Arc<Toplevel<BabyBear, LurkChip, NoChip>>,
     ZStore<BabyBear, LurkChip>,
     FxHashSet<Symbol>,
 ) {
@@ -2140,7 +2144,10 @@ mod test {
                 "ingress -> egress doesn't roundtrip"
             );
 
-            let hash4_trace = hash4_chip.generate_trace(&Shard::new(&queries));
+            let shards = Shard::new(queries.clone());
+            assert_eq!(shards.len(), 1);
+            let shard = &shards[0];
+            let hash4_trace = hash4_chip.generate_trace(shard);
             debug_constraints_collecting_queries(&hash4_chip, &[], None, &hash4_trace);
         };
 
