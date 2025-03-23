@@ -157,10 +157,11 @@ pub(crate) struct Repl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
     pub(crate) lurkscript: bool,
     /// Use the graphql backend when running microchain operations
     pub(crate) linera: bool,
+    pub(crate) wallet: Option<usize>,
 }
 
 impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
-    pub(crate) fn new(lang: Lang<BabyBear, C2>, lurkscript: bool, linera: bool) -> Self {
+    pub(crate) fn new(lang: Lang<BabyBear, C2>, lurkscript: bool, linera: bool, wallet: Option<usize>) -> Self {
         let (toplevel, mut zstore, lang_symbols) = build_lurk_toplevel(lang);
         let func_indices = FuncIndices::new(&toplevel);
         let env = zstore.intern_empty_env();
@@ -175,6 +176,7 @@ impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
             lang_symbols,
             lurkscript,
             linera,
+            wallet,
         }
     }
 }
@@ -182,8 +184,8 @@ impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
 impl Repl<BabyBear, LurkChip, NoChip> {
     /// Creates a REPL instance for the empty Lang with `C2 = NoChip`
     #[inline]
-    pub(crate) fn new_native(lurkscript: bool, linera: bool) -> Self {
-        Self::new(Lang::empty(), lurkscript, linera)
+    pub(crate) fn new_native(lurkscript: bool, linera: bool, wallet: Option<usize>) -> Self {
+        Self::new(Lang::empty(), lurkscript, linera, wallet)
     }
 }
 
@@ -273,13 +275,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
     }
 
     pub(crate) fn car_cdr(&self, zptr: &ZPtr<F>) -> (&ZPtr<F>, &ZPtr<F>) {
-        if zptr.tag == Tag::Cons {
-            self.zstore.fetch_tuple11(zptr)
-        } else if zptr == self.zstore.nil() {
-            (self.zstore.nil(), self.zstore.nil())
-        } else {
-            panic!("Invalid ZPtr")
-        }
+        self.zstore.car_cdr(zptr)
     }
 
     fn prompt_marker(&self) -> String {

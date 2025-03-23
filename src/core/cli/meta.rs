@@ -229,6 +229,88 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         },
     };
 
+    fn protocol_type<'a>(repl: &'a mut Repl<F, C1, C2>, state: &'a ZPtr<F>) -> Result<ProtocolType> {
+        if state.tag != Tag::Cons {
+            bail!("State must be a pair");
+        }
+
+        let (chain_result, _) = repl.car_cdr(state);
+        if chain_result.tag != Tag::Cons {
+            return Ok(ProtocolType::Result)
+        }
+
+        let (&control, _) = repl.car_cdr(chain_result);
+        let spawn = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["spawn"]));
+        let send = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["send"]));
+        let receive = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["receive"]));
+
+        if control == spawn {
+            Ok(ProtocolType::Spawn)
+        } else if control == send {
+            Ok(ProtocolType::Send)
+        } else if control == receive {
+            Ok(ProtocolType::Receive)
+        } else {
+            bail!("Not a valid control message")
+        }
+    }
+
+    fn preprocess<'a>(repl: &'a mut Repl<F, C1, C2>, state: &'a ZPtr<F>, call_args: &'a ZPtr<F>) -> Result<PreprocessData<F>> {
+        if state.tag != Tag::Cons {
+            bail!("pre: State must be a pair");
+        }
+
+        let (chain_result, _) = repl.car_cdr(state);
+        if chain_result.tag != Tag::Cons {
+            return Ok(PreprocessData::Result)
+        }
+
+        let (&control, _) = repl.car_cdr(chain_result);
+        let spawn = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["spawn"]));
+        let send = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["send"]));
+        let receive = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["receive"]));
+
+        if control == spawn {
+            let [&pid] = repl.take(&call_args)?;
+            Ok(PreprocessData::Spawn { pid })
+        } else if control == send {
+            Ok(PreprocessData::Send)
+        } else if control == receive {
+            let [&message] = repl.take(&call_args)?;
+            let (message, _) = repl.reduce_aux(&message)?;
+            Ok(PreprocessData::Receive { message })
+        } else {
+            bail!("pre: Not a valid control message")
+        }
+    }
+
+    fn postprocess<'a>(repl: &'a mut Repl<F, C1, C2>, state: &'a ZPtr<F>) -> Result<PostprocessData<F>> {
+        if state.tag != Tag::Cons {
+            bail!("post: State must be a pair");
+        }
+
+        let (chain_result, _) = repl.car_cdr(state);
+        if chain_result.tag != Tag::Cons {
+            return Ok(PostprocessData::Result)
+        }
+
+        let (&control, &rest) = repl.car_cdr(chain_result);
+        let spawn = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["spawn"]));
+        let send = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["send"]));
+        let receive = repl.zstore.intern_symbol_no_lang(&Symbol::key(&["receive"]));
+
+        if control == spawn {
+            Ok(PostprocessData::Spawn)
+        } else if control == send {
+            let [&other_pid, &message] = repl.take(&rest)?;
+            Ok(PostprocessData::Send { other_pid, message })
+        } else if control == receive {
+            Ok(PostprocessData::Receive)
+        } else {
+            bail!("post: Not a valid control message")
+        }
+    }
+
     const DEFQ: Self = Self {
         name: "defq",
         summary: "Extends env with a non-evaluated expression.",
@@ -241,6 +323,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                 let [&sym, &val] = repl.take(args)?;
                 Self::validate_binding_symbol(repl, &sym)?;
                 repl.bind(sym, val);
+                println!("protocol_type: {:?}", Self::protocol_type(repl, &val)?);
                 Ok(sym)
             })
         },
@@ -640,6 +723,10 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         if current_state.tag != Tag::Cons {
             bail!("Current state must reduce to a pair");
         }
+
+        let pre = Self::preprocess(repl, &current_state, &call_args)?;
+        println!("preprocess for current is: {}", pre.fmt(repl));
+
         repl.memoize_dag(&current_state);
         let (_, &callable) = repl.zstore.fetch_tuple11(&current_state);
         let call_expr = repl.zstore.intern_cons(callable, call_args);
@@ -657,7 +744,12 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         run: |repl, args, _dir| {
             Box::pin(async move {
                 let (&current_state_expr, &call_args) = repl.car_cdr(args);
-                let (cons, _) = Self::transition_call(repl, &current_state_expr, call_args)?;
+                let (cons, call_args) = Self::transition_call(repl, &current_state_expr, call_args)?;
+                println!("call_args: {}", repl.fmt(&call_args));
+
+                let post = Self::postprocess(repl, &cons)?;
+                println!("postprocess for current is: {}", post.fmt(repl));
+
                 Self::persist_chain_comm(repl, &cons)?;
                 Ok(cons)
             })
@@ -1324,11 +1416,13 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         _dir: &'a Utf8Path,
     ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
         Box::pin(async move {
-            let [&port, &chain_id, &state_expr] = repl.take(args)?;
+            let [&port, &chain, &owner, &other_owner, &state_expr] = repl.take(args)?;
             let (port, _) = repl.reduce_aux(&port)?;
-            let (chain_id, _) = repl.reduce_aux(&chain_id)?;
-            if port.tag != Tag::Str || chain_id.tag != Tag::Str {
-                bail!("Port and ChainId must be a string");
+            let (chain, _) = repl.reduce_aux(&chain)?;
+            let (owner, _) = repl.reduce_aux(&owner)?;
+            let (other_owner, _) = repl.reduce_aux(&other_owner)?;
+            if port.tag != Tag::Str || chain.tag != Tag::Str || owner.tag != Tag::Str || other_owner.tag != Tag::Str {
+                bail!("All args excetpt state must be strings");
             }
 
             let (state, _) = repl.reduce_aux(&state_expr)?;
@@ -1352,25 +1446,26 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                 callable_data,
             };
             let port = repl.zstore.fetch_string(&port);
-            let chain_id = repl.zstore.fetch_string(&chain_id);
+            let chain = repl.zstore.fetch_string(&chain);
+            let owner = repl.zstore.fetch_string(&owner);
+            let other_owner = repl.zstore.fetch_string(&other_owner);
 
             let genesis = bincode::serialize(&genesis)?;
-            // TODO: FIX HARDCODE
             let app_id = graphql_client::microchain_start(
+                repl.wallet,
+                &port,
+                &chain,
+                &owner,
+                &other_owner,
                 &genesis,
-                "linera_assets/microchain_contract.wasm",
-                "linera_assets/microchain_service.wasm",
+                // Fix: don't hardcode or make constants
+                "linera_assets/lurk_microchain_contract.wasm",
+                "linera_assets/lurk_microchain_service.wasm",
             )
             .await?;
-            let id_str = format!(
-                "http://127.0.0.1:{}/chains/{}/applications/{}",
-                port, chain_id, app_id
-            );
-            println!("Starting linera service on port {}", port);
-            graphql_client::linera_service(port).await;
 
-            let id = repl.zstore.intern_string(&id_str);
-            Ok(id)
+            let app_id = repl.zstore.intern_string(&app_id);
+            Ok(app_id)
         })
     }
 
@@ -1543,6 +1638,8 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             CallableData::Fun(LurkData::new(state_callable, &repl.zstore))
         };
 
+        println!("call_args: {}", repl.fmt(&call_args));
+
         let chain_proof = ChainProof {
             crypto_proof,
             call_args,
@@ -1608,12 +1705,12 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             let hash = graphql_client::publish_data_blob(&port, chain_id, data).await?;
             let res = graphql_client::microchain_transition(&id, hash).await;
             match res {
-                Ok(_) => {
-                    println!("Proof accepted by the server");
+                Ok(res) => {
+                    println!("Proof accepted by the server: {}", res);
                     Ok(state)
                 }
-                Err(_) => {
-                    let msg = "Proof verification failed".to_string();
+                Err(e) => {
+                    let msg = format!("Proof verification failed: {}", e);
                     bail!(msg);
                 }
             }
@@ -1760,6 +1857,52 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
     };
 }
 
+#[derive(Debug)]
+enum ProtocolType {
+    Spawn,
+    Send,
+    Receive,
+    Result,
+}
+
+#[derive(Debug)]
+enum PreprocessData<F> {
+    Spawn { pid: ZPtr<F> },
+    Send,
+    Receive { message: ZPtr<F> },
+    Result,
+}
+
+impl<F: PrimeField32> PreprocessData<F> {
+    fn fmt<C1: Chipset<F>, C2: Chipset<F>>(&self, repl: &mut Repl<F, C1, C2>) -> String {
+        match self {
+            PreprocessData::Spawn { pid } => format!("PreprocessData::Spawn {{ {} }}", repl.fmt(pid)),
+            PreprocessData::Send => format!("PreprocessData::Send"),
+            PreprocessData::Receive { message } => format!("PreprocessData::Receive {{ {} }}", repl.fmt(message)),
+            PreprocessData::Result => format!("PreprocessData::Result"),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum PostprocessData<F> {
+    Spawn,
+    Send { other_pid: ZPtr<F>, message: ZPtr<F> },
+    Receive,
+    Result,
+}
+
+impl<F: PrimeField32> PostprocessData<F> {
+    fn fmt<C1: Chipset<F>, C2: Chipset<F>>(&self, repl: &mut Repl<F, C1, C2>) -> String {
+        match self {
+            PostprocessData::Spawn => format!("PostprocessData::Spawn"),
+            PostprocessData::Send { other_pid, message }=> format!("PostprocessData::Send {{ {} {} }}", repl.fmt(other_pid), repl.fmt(message)),
+            PostprocessData::Receive => format!("PostprocessData::Receive"),
+            PostprocessData::Result => format!("PostprocessData::Result"),
+        }
+    }
+}
+
 fn copy_inner<'a, T: Copy + 'a, I: IntoIterator<Item = &'a T>>(xs: I) -> Vec<T> {
     xs.into_iter().copied().collect()
 }
@@ -1830,7 +1973,7 @@ mod test {
 
     #[tokio::test]
     async fn test_def() {
-        let mut repl = Repl::new_native(false, false);
+        let mut repl = Repl::new_native(false, false, None);
         let foo = repl.zstore.intern_symbol_no_lang(&user_sym("foo"));
         let a = repl.zstore.intern_symbol_no_lang(&user_sym("a"));
         let args = repl.zstore.intern_list([foo, a]);

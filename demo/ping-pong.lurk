@@ -1,0 +1,43 @@
+!(set-env (letrec 
+            ((pong (lambda (pid) 
+                     (cons '(:receive) 
+                            (lambda (msg) 
+                              (if (eq (car msg) :ping) 
+                                  (begin (emit (list "got ping" msg)) (cons (list :send (car (cdr msg)) (list :pong pid)) (lambda nil (pong pid)))) 
+                                  (pong pid)))))) 
+             (ping (lambda (pid) 
+                     (cons '(:spawn pong) 
+                            (lambda (other-pid) 
+                              (cons (list :send other-pid (list :ping pid)) 
+                                    (lambda nil 
+                                      (cons '(:receive) 
+                                             (lambda (msg) (begin (if (eq (car msg) :pong) (emit (list "got pong" msg))) (cons nil nil))))))))))) 
+            (current-env)))
+
+!(def ping-id 8080)
+!(def ping1 (ping ping-id))
+
+!(def pong-id 8081)
+!(def pong1 (pong pong-id))
+
+!(defq ping2 !(transition ping1 pong-id))
+
+!(defq pong2 !(transition pong1 (car (cdr (cdr (car ping2))))))
+
+!(defq ping3 !(transition ping2))
+
+!(defq ping4 !(transition ping3 (car (cdr (cdr (car pong2))))))
+
+!(defq pong3 !(transition pong2))
+
+; For linera
+!(def port "8081")
+!(def chain-id "e476187f6ddfeb9d588c7b45d3df334d5501d6499b3f9ad5595cae86cce16a65")
+!(def owner "df44403a282330a8b086603516277c014c844a4b418835873aced1132a3adcd5")
+
+; !(defq ping-app-id !(microchain-start port chain-id owner other-owner ping1))
+; !(defq ping2 !(microchain-transition port ping-chain-id ping-app-id ping1 pong-chain-id))
+; !(defq pong2 !(microchain-transition port pong-chain-id pong-app-id pong1 (car (cdr (cdr (car ping2))))))
+; !(defq ping3 !(microchain-transition port ping-chain-id ping-app-id ping2))
+; !(defq ping4 !(microchain-transition port ping-chain-id ping-app-id ping3 (car (cdr (cdr (car pong2))))))
+; !(defq pong3 !(microchain-transition port pong-chain-id pong-app-id pong2))

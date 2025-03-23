@@ -48,6 +48,9 @@ struct ReplArgs {
 
     #[arg(long)]
     linera: bool,
+
+    #[arg(long)]
+    with_wallet: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -60,6 +63,9 @@ struct ReplCli {
 
     #[arg(long)]
     linera: bool,
+
+    #[arg(long)]
+    with_wallet: Option<usize>,
 }
 
 #[derive(Args, Debug)]
@@ -102,11 +108,13 @@ impl ReplArgs {
             preload,
             lurkscript,
             linera,
+            with_wallet,
         } = self;
         ReplCli {
             preload,
             lurkscript,
             linera,
+            with_wallet,
         }
     }
 }
@@ -138,7 +146,7 @@ impl Cli {
 
 impl ReplCli {
     async fn run(&self) -> Result<()> {
-        let mut repl = Repl::new_native(self.lurkscript, self.linera);
+        let mut repl = Repl::new_native(self.lurkscript, self.linera, self.with_wallet);
         if let Some(lurk_file) = &self.preload {
             repl.load_file(lurk_file, false).await?;
         }
@@ -148,7 +156,7 @@ impl ReplCli {
 
 impl LoadCli {
     async fn run(&self) -> Result<()> {
-        let mut repl = Repl::new_native(false, false);
+        let mut repl = Repl::new_native(false, false, None);
         repl.load_file(&self.lurk_file, self.demo).await?;
         if self.prove {
             repl.prove_last_reduction()?;

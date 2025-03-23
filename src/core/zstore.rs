@@ -896,6 +896,16 @@ impl<F: Field, C: Chipset<F>> ZStore<F, C> {
         env
     }
 
+    pub fn car_cdr(&self, zptr: &ZPtr<F>) -> (&ZPtr<F>, &ZPtr<F>) {
+        if zptr.tag == Tag::Cons {
+            self.fetch_tuple11(zptr)
+        } else if zptr == self.nil() {
+            (self.nil(), self.nil())
+        } else {
+            panic!("Invalid ZPtr")
+        }
+    }
+
     pub fn property_map<'a>(&'a self, list: &'a ZPtr<F>) -> Result<FxHashMap<String, &'a ZPtr<F>>>
     where
         F: PrimeField32,

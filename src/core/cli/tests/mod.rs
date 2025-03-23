@@ -6,12 +6,12 @@ use crate::core::cli::{
 #[tokio::test]
 async fn test_meta_commands() {
     set_config_if_unset(Config::default());
-    let mut repl = Repl::new_native(false, false);
+    let mut repl = Repl::new_native(false, false, None);
     assert!(repl
         .load_file("src/core/cli/tests/first.lurk".into(), false)
         .await
         .is_ok());
-    let mut repl = Repl::new_native(false, false);
+    let mut repl = Repl::new_native(false, false, None);
     assert!(repl
         .load_file("src/core/cli/tests/second.lurk".into(), false)
         .await
@@ -23,12 +23,12 @@ async fn test_meta_commands() {
 #[tokio::test]
 async fn test_meta_commands_with_proofs() {
     set_config_if_unset(Config::default());
-    let mut repl = Repl::new_native(false, false);
+    let mut repl = Repl::new_native(false, false, None);
     assert!(repl
         .load_file("src/core/cli/tests/prove.lurk".into(), false)
         .await
         .is_ok());
-    let mut repl = Repl::new_native(false, false);
+    let mut repl = Repl::new_native(false, false, None);
     assert!(repl
         .load_file("src/core/cli/tests/verify.lurk".into(), false)
         .await
@@ -40,7 +40,7 @@ async fn test_meta_commands_with_proofs() {
 #[tokio::test]
 async fn test_lib() {
     set_config_if_unset(Config::default());
-    let mut repl = Repl::new_native(false, false);
+    let mut repl = Repl::new_native(false, false, None);
     assert!(repl.load_file("lib/tests.lurk".into(), false).await.is_ok());
 }
 
@@ -59,7 +59,7 @@ async fn test_demo_files() {
         "demo/microbank.lurk",
     ];
     for file in demo_files {
-        let mut repl = Repl::new_native(false, false);
+        let mut repl = Repl::new_native(false, false, None);
         assert!(repl.load_file(file.into(), false).await.is_ok());
     }
     std::fs::remove_file("protocol-proof").unwrap();
