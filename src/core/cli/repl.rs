@@ -257,21 +257,9 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
     /// of elements. Errors if the list has a different length.
     pub(crate) fn take<'a, const N: usize>(
         &'a self,
-        mut args: &'a ZPtr<F>,
+        args: &'a ZPtr<F>,
     ) -> Result<[&'a ZPtr<F>; N]> {
-        let mut res = Vec::with_capacity(N);
-        for i in 0..N {
-            if args.tag != Tag::Cons {
-                bail!("Missing argument {}", i + 1);
-            }
-            let (arg, rst) = self.zstore.fetch_tuple11(args);
-            res.push(arg);
-            args = rst;
-        }
-        if args != self.zstore.nil() {
-            bail!("Only {N} arguments are supported");
-        }
-        Ok(res.try_into().unwrap())
+        self.zstore.take(args)
     }
 
     pub(crate) fn car_cdr(&self, zptr: &ZPtr<F>) -> (&ZPtr<F>, &ZPtr<F>) {

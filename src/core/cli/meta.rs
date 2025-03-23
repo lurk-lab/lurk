@@ -1866,7 +1866,7 @@ enum ProtocolType {
 }
 
 #[derive(Debug)]
-enum PreprocessData<F> {
+pub enum PreprocessData<F> {
     Spawn { pid: ZPtr<F> },
     Send,
     Receive { message: ZPtr<F> },
@@ -1885,7 +1885,7 @@ impl<F: PrimeField32> PreprocessData<F> {
 }
 
 #[derive(Debug)]
-enum PostprocessData<F> {
+pub enum PostprocessData<F> {
     Spawn,
     Send { other_pid: ZPtr<F>, message: ZPtr<F> },
     Receive,

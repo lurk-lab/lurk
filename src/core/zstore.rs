@@ -896,6 +896,25 @@ impl<F: Field, C: Chipset<F>> ZStore<F, C> {
         env
     }
 
+    pub fn take<'a, const N: usize>(
+        &'a self,
+        mut args: &'a ZPtr<F>,
+    ) -> Result<[&'a ZPtr<F>; N]> {
+        let mut res = Vec::with_capacity(N);
+        for i in 0..N {
+            if args.tag != Tag::Cons {
+                bail!("Missing argument {}", i + 1);
+            }
+            let (arg, rst) = self.fetch_tuple11(args);
+            res.push(arg);
+            args = rst;
+        }
+        if args != self.nil() {
+            bail!("Only {N} arguments are supported");
+        }
+        Ok(res.try_into().unwrap())
+    }
+
     pub fn car_cdr(&self, zptr: &ZPtr<F>) -> (&ZPtr<F>, &ZPtr<F>) {
         if zptr.tag == Tag::Cons {
             self.fetch_tuple11(zptr)

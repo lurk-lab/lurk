@@ -2,7 +2,7 @@ pub mod comm_data;
 mod config;
 mod debug;
 pub mod lurk_data;
-mod meta;
+pub mod meta;
 pub mod microchain;
 mod paths;
 pub mod proofs;
