@@ -201,7 +201,7 @@ impl ProtocolProof {
 #[derive(Serialize, Deserialize)]
 pub struct ChainProof {
     pub crypto_proof: CryptoProof,
-    pub call_args: ZPtr<F>,
+    pub call_args: LurkData<F>,
     pub next_chain_result: LurkData<F>,
     pub next_callable: CallableData,
 }

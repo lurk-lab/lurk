@@ -1,13 +1,17 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Args;
 use p3_baby_bear::BabyBear;
+use p3_field::PrimeField32;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use sp1_stark::StarkGenericConfig;
 use std::{
     hash::Hash,
     io::{Read, Write},
-    net::{TcpListener, TcpStream}, time::Duration,
+    net::{TcpListener, TcpStream},
+    time::Duration,
 };
 
 use crate::{
@@ -18,6 +22,8 @@ use crate::{
         eval_direct::build_lurk_toplevel,
         lang::Lang,
         stark_machine::new_machine,
+        symbol::Symbol,
+        tag::Tag,
         zstore::{ZPtr, ZStore, DIGEST_SIZE},
     },
     lair::{chipset::Chipset, lair_chip::LairMachineProgram},
@@ -35,6 +41,8 @@ pub struct MicrochainArgs {
     // The IP address with the port. E.g. "127.0.0.1:1234"
     #[clap(value_parser)]
     addr: String,
+    #[arg(long)]
+    seed: Option<u64>,
 }
 
 type F = BabyBear;
@@ -105,6 +113,7 @@ pub enum Response {
     NoDataForId,
     Genesis([F; DIGEST_SIZE], ChainState),
     State(ChainState),
+    CallArgsIsFlawed,
     ChainResultIsFlawed,
     NextCallableIsFlawed,
     ProofVerificationFailed(String),
@@ -120,13 +129,18 @@ type Genesis = ([F; DIGEST_SIZE], ChainState);
 
 impl MicrochainArgs {
     pub fn run(self) -> Result<()> {
-        let MicrochainArgs { addr } = self;
+        let MicrochainArgs { addr, seed } = self;
         let listener = TcpListener::bind(&addr)?;
         println!("Listening at {addr}");
 
         let (toplevel, mut zstore, _) = build_lurk_toplevel(Lang::empty());
         let empty_env = zstore.intern_empty_env();
         let mut index = 0;
+
+        let mut rng = match seed {
+            Some(seed) => ChaCha20Rng::seed_from_u64(seed),
+            None => ChaCha20Rng::from_entropy(),
+        };
 
         for stream in listener.incoming() {
             match stream {
@@ -153,7 +167,7 @@ impl MicrochainArgs {
                                 return_msg!(Response::NextCallableIsFlawed);
                             }
 
-                            let id_secret = rand_digest();
+                            let id_secret = rand_digest(&mut rng);
                             let callable_zptr = chain_state.callable_data.zptr(&mut zstore);
                             let state_cons =
                                 zstore.intern_cons(chain_state.chain_result.zptr, callable_zptr);
@@ -162,6 +176,12 @@ impl MicrochainArgs {
                             dump_genesis_state(&id, &chain_state)?;
 
                             dump_state(&id, &chain_state)?;
+                            println!(
+                                "postprocess: {}",
+                                postprocess(&mut zstore, chain_state.clone())
+                                    .unwrap()
+                                    .fmt(&mut zstore)
+                            );
                             dump_genesis(&id, &(id_secret, chain_state))?;
                             dump_proofs(&id, &[])?;
                             println!("Writing response");
@@ -186,7 +206,7 @@ impl MicrochainArgs {
                             else {
                                 return_msg!(Response::NoDataForId);
                             };
-                            
+
                             dump_proof(&id, index, &chain_proof)?;
                             index += 1;
 
@@ -196,6 +216,9 @@ impl MicrochainArgs {
                                 next_chain_result,
                                 next_callable,
                             } = chain_proof;
+
+                            // TODO: check this
+                            let call_args_zptr = call_args.populate_zstore(&mut zstore);
 
                             let next_chain_result_zptr = {
                                 if next_chain_result.is_flawed(&mut zstore) {
@@ -219,10 +242,17 @@ impl MicrochainArgs {
                                 }
                             };
 
+                            println!(
+                                "preprocess: {}",
+                                preprocess(&mut zstore, state.clone(), &call_args_zptr)
+                                    .unwrap()
+                                    .fmt(&mut zstore)
+                            );
+
                             // the expression is a call whose callable is part of the server state
                             // and the arguments are provided by the client
                             let callable_zptr = state.callable_data.zptr(&mut zstore);
-                            let expr = zstore.intern_cons(callable_zptr, call_args);
+                            let expr = zstore.intern_cons(callable_zptr, call_args_zptr);
 
                             // the next state is a pair composed by the chain result and next callable
                             // provided by the client
@@ -246,20 +276,24 @@ impl MicrochainArgs {
                             // store new proof
                             proofs.push(OpaqueChainProof {
                                 crypto_proof: machine_proof.into(),
-                                call_args,
+                                call_args: call_args_zptr,
                                 next_chain_result: next_chain_result_zptr,
                                 next_callable: next_callable_zptr,
                             });
                             dump_proofs(&id, &proofs)?;
 
                             // update the state
-                            dump_state(
-                                &id,
-                                &ChainState {
-                                    chain_result: next_chain_result,
-                                    callable_data: next_callable,
-                                },
-                            )?;
+                            let next_chain_state = ChainState {
+                                chain_result: next_chain_result,
+                                callable_data: next_callable,
+                            };
+                            dump_state(&id, &next_chain_state)?;
+                            println!(
+                                "postprocess: {}",
+                                postprocess(&mut zstore, next_chain_state)
+                                    .unwrap()
+                                    .fmt(&mut zstore)
+                            );
 
                             // update the proof index
                             let mut proof_index = load_proof_index(&id).unwrap_or_default();
@@ -391,6 +425,111 @@ impl<F: Hash + Eq> ProofIndex<F> {
     }
 }
 
+#[derive(Debug)]
+pub enum PreprocessData<F> {
+    Spawn { pid: ZPtr<F> },
+    Send,
+    Receive { message: ZPtr<F> },
+    Result,
+}
+
+impl<F: PrimeField32> PreprocessData<F> {
+    fn fmt<C1: Chipset<F>>(&self, zstore: &mut ZStore<F, C1>) -> String {
+        match self {
+            PreprocessData::Spawn { pid } => {
+                format!("PreprocessData::Spawn {{ {} }}", zstore.fmt(pid))
+            }
+            PreprocessData::Send => format!("PreprocessData::Send"),
+            PreprocessData::Receive { message } => {
+                format!("PreprocessData::Receive {{ {} }}", zstore.fmt(message))
+            }
+            PreprocessData::Result => format!("PreprocessData::Result"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum PostprocessData<F> {
+    Spawn,
+    Send {
+        other_pid: ZPtr<F>,
+        message: ZPtr<F>,
+    },
+    Receive,
+    Result,
+}
+
+impl<F: PrimeField32> PostprocessData<F> {
+    fn fmt<C1: Chipset<F>>(&self, zstore: &mut ZStore<F, C1>) -> String {
+        match self {
+            PostprocessData::Spawn => format!("PostprocessData::Spawn"),
+            PostprocessData::Send { other_pid, message } => format!(
+                "PostprocessData::Send {{ {} {} }}",
+                zstore.fmt(other_pid),
+                zstore.fmt(message)
+            ),
+            PostprocessData::Receive => format!("PostprocessData::Receive"),
+            PostprocessData::Result => format!("PostprocessData::Result"),
+        }
+    }
+}
+
+fn preprocess<'a, C1: Chipset<F>>(
+    zstore: &'a mut ZStore<F, C1>,
+    chain_state: ChainState,
+    call_args: &'a ZPtr<F>,
+) -> Result<PreprocessData<F>> {
+    let chain_state = chain_state.into_zptr(zstore);
+    let (chain_result, _) = zstore.car_cdr(&chain_state);
+    if chain_result.tag != Tag::Cons {
+        return Ok(PreprocessData::Result);
+    }
+
+    let (&control, _) = zstore.car_cdr(chain_result);
+    let spawn = zstore.intern_symbol_no_lang(&Symbol::key(&["spawn"]));
+    let send = zstore.intern_symbol_no_lang(&Symbol::key(&["send"]));
+    let receive = zstore.intern_symbol_no_lang(&Symbol::key(&["receive"]));
+
+    if control == spawn {
+        let [&pid] = zstore.take(&call_args)?;
+        Ok(PreprocessData::Spawn { pid })
+    } else if control == send {
+        Ok(PreprocessData::Send)
+    } else if control == receive {
+        let [&message] = zstore.take(&call_args)?;
+        Ok(PreprocessData::Receive { message })
+    } else {
+        bail!("pre: Not a valid control message")
+    }
+}
+
+fn postprocess<'a, C1: Chipset<F>>(
+    zstore: &'a mut ZStore<F, C1>,
+    chain_state: ChainState,
+) -> Result<PostprocessData<F>> {
+    let chain_state = chain_state.into_zptr(zstore);
+    let (chain_result, _) = zstore.car_cdr(&chain_state);
+    if chain_result.tag != Tag::Cons {
+        return Ok(PostprocessData::Result);
+    }
+
+    let (&control, &rest) = zstore.car_cdr(chain_result);
+    let spawn = zstore.intern_symbol_no_lang(&Symbol::key(&["spawn"]));
+    let send = zstore.intern_symbol_no_lang(&Symbol::key(&["send"]));
+    let receive = zstore.intern_symbol_no_lang(&Symbol::key(&["receive"]));
+
+    if control == spawn {
+        Ok(PostprocessData::Spawn)
+    } else if control == send {
+        let [&other_pid, &message] = zstore.take(&rest)?;
+        Ok(PostprocessData::Send { other_pid, message })
+    } else if control == receive {
+        Ok(PostprocessData::Receive)
+    } else {
+        bail!("post: Not a valid control message")
+    }
+}
+
 fn dump_microchain_data<T: Serialize + ?Sized>(id: &[F], name: &str, data: &T) -> Result<()> {
     let hash = format!("{:x}", field_elts_to_biguint(id));
     let dir = microchains_dir()?.join(hash);
@@ -449,30 +588,30 @@ fn load_proof_index(id: &[F]) -> Result<ProofIndex<F>> {
 pub(crate) fn write_data<T: Serialize>(stream: &mut TcpStream, data: T) -> Result<()> {
     // Set write timeout
     stream.set_write_timeout(Some(Duration::from_secs(30)))?;
-    
+
     let data_bytes = bincode::serialize(&data)?;
     println!("Attempting to write length: {}", data_bytes.len());
     match stream.write_all(&data_bytes.len().to_le_bytes()) {
         Ok(_) => println!("Length written successfully"),
         Err(e) => println!("Error writing length: {}", e),
     }
-    
+
     match stream.flush() {
         Ok(_) => println!("Flush after length successful"),
         Err(e) => println!("Error flushing after length: {}", e),
     }
-    
+
     println!("Attempting to write {} bytes of data", data_bytes.len());
     match stream.write_all(&data_bytes) {
         Ok(_) => println!("Data written successfully"),
         Err(e) => println!("Error writing data: {}", e),
     }
-    
+
     match stream.flush() {
         Ok(_) => println!("Final flush successful"),
         Err(e) => println!("Error on final flush: {}", e),
     }
-    
+
     Ok(())
 }
 
@@ -481,31 +620,32 @@ pub(crate) fn read_data<T: for<'a> Deserialize<'a>>(stream: &mut TcpStream) -> R
 
     // Set read timeout
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
-    
+
     println!("Reading length...");
     let mut size_bytes = [0; 8];
     match stream.read_exact(&mut size_bytes) {
         Ok(_) => println!("Read length bytes successfully"),
         Err(e) => println!("Error reading length bytes: {}", e),
     }
-    
+
     let size = usize::from_le_bytes(size_bytes);
     println!("Got length: {} bytes", size);
-    
-    if size > 10_000_000 {  // 10MB sanity check
+
+    if size > 10_000_000 {
+        // 10MB sanity check
         return Err(anyhow::anyhow!("Size too large: {}", size));
     }
-    
+
     let mut data_buffer = vec![0; size];
     println!("Reading {} bytes of data...", size);
     match stream.read_exact(&mut data_buffer) {
         Ok(_) => println!("Read data successfully"),
         Err(e) => println!("Error reading data: {}", e),
     }
-    
+
     println!("Deserializing data...");
     let data = bincode::deserialize(&data_buffer)?;
     println!("Deserialization complete");
-    
+
     Ok(data)
 }

@@ -30,10 +30,18 @@
 
 !(defq pong3 !(transition pong2))
 
-; For linera
-!(def port "8081")
-!(def chain-id "e476187f6ddfeb9d588c7b45d3df334d5501d6499b3f9ad5595cae86cce16a65")
-!(def owner "df44403a282330a8b086603516277c014c844a4b418835873aced1132a3adcd5")
+; ; For linera
+; !(def port "8081")
+; !(def chain-id "e476187f6ddfeb9d588c7b45d3df334d5501d6499b3f9ad5595cae86cce16a65")
+; !(def owner "df44403a282330a8b086603516277c014c844a4b418835873aced1132a3adcd5")
+
+; !(defq ping-chain-id !(microchain-start "127.0.0.1:8090" ping1))
+; !(defq pong-chain-id !(microchain-start "127.0.0.1:8090" pong1))
+; !(defq ping2 !(microchain-transition "127.0.0.1:8090" ping-chain-id ping1 pong-id))
+; !(defq pong2 !(microchain-transition "127.0.0.1:8090" pong-chain-id pong1 (car (cdr (cdr (car ping2))))))
+; !(defq ping3 !(microchain-transition "127.0.0.1:8090" ping-chain-id ping2))
+; !(defq ping4 !(microchain-transition "127.0.0.1:8090" ping-chain-id ping3 (car (cdr (cdr (car pong2))))))
+; !(defq pong3 !(microchain-transition "127.0.0.1:8090" pong-chain-id pong2))
 
 ; !(defq ping-app-id !(microchain-start port chain-id owner other-owner ping1))
 ; !(defq ping2 !(microchain-transition port ping-chain-id ping-app-id ping1 pong-chain-id))
