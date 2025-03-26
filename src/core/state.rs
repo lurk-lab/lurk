@@ -315,7 +315,7 @@ pub(crate) const BUILTIN_SYMBOLS: [&str; 43] = [
     "fail",
 ];
 
-pub(crate) const META_SYMBOLS: [&str; 39] = [
+pub(crate) const META_SYMBOLS: [&str; 40] = [
     "def",
     "defq",
     "defrec",
@@ -348,6 +348,7 @@ pub(crate) const META_SYMBOLS: [&str; 39] = [
     "defprotocol",
     "prove-protocol",
     "verify-protocol",
+    "linera-start",
     "microchain-start",
     "microchain-get-genesis",
     "microchain-get-state",

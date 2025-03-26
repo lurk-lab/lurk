@@ -26,9 +26,12 @@ use crate::{
 use super::{
     comm_data::CommData,
     debug::debug_mode,
-    graphql_client,
+    graphql_client::{self, linera_service, linera_service_kill},
     lurk_data::LurkData,
-    microchain::{read_data, write_data, CallableData, ChainState, Request, Response},
+    microchain::{
+        postprocess, read_data, write_data, CallableData, ChainState, PostprocessData, Request,
+        Response,
+    },
     paths::{commits_dir, proofs_dir},
     proofs::{get_verifier_version, CachedProof, ChainProof, OpaqueChainProof, ProtocolProof},
     rdg::rand_digest,
@@ -1275,6 +1278,43 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         CommData::new(secret, payload, &repl.zstore)
     }
 
+    const LINERA_START: Self = Self {
+        name: "linera-start",
+        summary: "Starts a new concurrent lurk application on linera",
+        info: &["This runs a linera publish-and-create "],
+        format: "!(linera-start <contract.wasm> <service.wasm>)",
+        example: &["!(defq app-id !(linera-start \"contract.wasm\" \"service.wasm\"))"],
+        returns: "The created linera application's ID",
+        run: |repl, args, _dir| {
+            Box::pin(async move {
+                if repl.linera {
+                    let [&chain_id, &contract, &service] = repl.take(args)?;
+                    let (chain_id, _) = repl.reduce_aux(&chain_id)?;
+                    let (contract, _) = repl.reduce_aux(&contract)?;
+                    let (service, _) = repl.reduce_aux(&service)?;
+                    if chain_id.tag != Tag::Str
+                        || contract.tag != Tag::Str
+                        || service.tag != Tag::Str
+                    {
+                        bail!("Both contract and service must be strings");
+                    }
+
+                    let chain_id = repl.zstore.fetch_string(&chain_id);
+                    let contract = repl.zstore.fetch_string(&contract);
+                    let service = repl.zstore.fetch_string(&service);
+
+                    let app_id =
+                        graphql_client::linera_create(repl.wallet, &chain_id, &contract, &service)
+                            .await?;
+                    let app_id = repl.zstore.intern_string(&app_id);
+                    Ok(app_id)
+                } else {
+                    bail!("linera-start can only be used when REPL is in --linera mode");
+                }
+            })
+        },
+    };
+
     fn lurk_microchain_start<'a>(
         repl: &'a mut Repl<F, C1, C2>,
         args: &'a ZPtr<F>,
@@ -1328,13 +1368,17 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         _dir: &'a Utf8Path,
     ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
         Box::pin(async move {
-            let [&port, &chain, &owner, &other_owner, &state_expr] = repl.take(args)?;
+            let [&port, &chain, &app, &owner, &state_expr] = repl.take(args)?;
             let (port, _) = repl.reduce_aux(&port)?;
-            let (chain, _) = repl.reduce_aux(&chain)?;
+            let (chain_zptr, _) = repl.reduce_aux(&chain)?;
+            let (app, _) = repl.reduce_aux(&app)?;
             let (owner, _) = repl.reduce_aux(&owner)?;
-            let (other_owner, _) = repl.reduce_aux(&other_owner)?;
-            if port.tag != Tag::Str || chain.tag != Tag::Str || owner.tag != Tag::Str || other_owner.tag != Tag::Str {
-                bail!("All args excetpt state must be strings");
+            if port.tag != Tag::Str
+                || chain_zptr.tag != Tag::Str
+                || app.tag != Tag::Str
+                || owner.tag != Tag::Str
+            {
+                bail!("All args except state must be strings");
             }
 
             let (state, _) = repl.reduce_aux(&state_expr)?;
@@ -1357,27 +1401,31 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                 chain_result,
                 callable_data,
             };
-            let port = repl.zstore.fetch_string(&port);
-            let chain = repl.zstore.fetch_string(&chain);
-            let owner = repl.zstore.fetch_string(&owner);
-            let other_owner = repl.zstore.fetch_string(&other_owner);
 
-            let genesis = bincode::serialize(&genesis)?;
-            let app_id = graphql_client::microchain_start(
+            let port = repl.zstore.fetch_string(&port);
+            let chain = repl.zstore.fetch_string(&chain_zptr);
+            let app = repl.zstore.fetch_string(&app);
+            let owner = repl.zstore.fetch_string(&owner);
+
+            let genesis_bytes = bincode::serialize(&genesis)?;
+            graphql_client::microchain_start(
                 repl.wallet,
                 &port,
                 &chain,
+                &app,
                 &owner,
-                &other_owner,
-                &genesis,
-                // Fix: don't hardcode or make constants
-                "linera_assets/lurk_microchain_contract.wasm",
-                "linera_assets/lurk_microchain_service.wasm",
+                &genesis_bytes,
             )
             .await?;
 
-            let app_id = repl.zstore.intern_string(&app_id);
-            Ok(app_id)
+            let postprocess = postprocess(&mut repl.zstore, genesis)?;
+            if let PostprocessData::Spawn = postprocess {
+                let child_id =
+                    graphql_client::setup_spawn(repl.wallet, &port, &chain, &app, &owner).await?;
+                println!("Process spawned a new chain: {child_id}");
+            }
+
+            Ok(chain_zptr)
         })
     }
 
@@ -1505,7 +1553,11 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                 "http://127.0.0.1:{}/chains/{}/applications/{}",
                 port, chain_id, app_id
             );
+            
+            linera_service(repl.wallet, &port).await?;
             let chain_state = graphql_client::microchain_get_state(&id).await?;
+            linera_service_kill(&port).await?;
+
             let state = chain_state.into_zptr(&mut repl.zstore);
             Ok(state)
         })
@@ -1613,8 +1665,12 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             let (state, chain_proof) = Self::core_microchain_transition(repl, &rest)?;
 
             let data = bincode::serialize(&chain_proof)?;
-            let hash = graphql_client::publish_data_blob(&port, chain_id, data).await?;
+            let hash = graphql_client::publish_data_blob(repl.wallet, &chain_id, &data).await?;
+
+            graphql_client::linera_service(repl.wallet, &port).await?;
             let res = graphql_client::microchain_transition(&id, hash).await;
+            graphql_client::linera_service_kill(&port).await?;
+
             match res {
                 Ok(res) => {
                     println!("Proof accepted by the server: {}", res);
@@ -1807,6 +1863,7 @@ pub(crate) fn meta_cmds<C1: Chipset<F>, C2: Chipset<F>>() -> MetaCmdsMap<F, C1, 
         MetaCmd::DEFPROTOCOL,
         MetaCmd::PROVE_PROTOCOL,
         MetaCmd::VERIFY_PROTOCOL,
+        MetaCmd::LINERA_START,
         MetaCmd::MICROCHAIN_START,
         MetaCmd::MICROCHAIN_GET_GENESIS,
         MetaCmd::MICROCHAIN_GET_STATE,

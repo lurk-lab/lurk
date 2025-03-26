@@ -491,19 +491,21 @@ fn preprocess<'a, C1: Chipset<F>>(
     let receive = zstore.intern_symbol_no_lang(&Symbol::key(&["receive"]));
 
     if control == spawn {
-        let [&pid] = zstore.take(&call_args)?;
+        let [&quoted_pid] = zstore.take(&call_args)?;
+        let [_, &pid] = zstore.take(&quoted_pid)?;
         Ok(PreprocessData::Spawn { pid })
     } else if control == send {
         Ok(PreprocessData::Send)
     } else if control == receive {
-        let [&message] = zstore.take(&call_args)?;
+        let [&quoted_message] = zstore.take(&call_args)?;
+        let [_, &message] = zstore.take(&quoted_message)?;
         Ok(PreprocessData::Receive { message })
     } else {
         bail!("pre: Not a valid control message")
     }
 }
 
-fn postprocess<'a, C1: Chipset<F>>(
+pub fn postprocess<'a, C1: Chipset<F>>(
     zstore: &'a mut ZStore<F, C1>,
     chain_state: ChainState,
 ) -> Result<PostprocessData<F>> {
