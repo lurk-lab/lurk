@@ -192,7 +192,7 @@ async fn execute_start_mutation(
     let mutation = format!(
         r#"mutation {{
             start(
-                owner: {owner},
+                owner: "{owner}",
                 chainState: "{genesis_blob_id}"
             )
         }}"#
