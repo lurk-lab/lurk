@@ -1281,7 +1281,7 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
     const LINERA_START: Self = Self {
         name: "linera-start",
         summary: "Starts a new concurrent lurk application on linera",
-        info: &["This runs a linera publish-and-create "],
+        info: &["This runs a linera publish-and-create command for the given contract and service wasm files"],
         format: "!(linera-start <contract.wasm> <service.wasm>)",
         example: &["!(defq app-id !(linera-start \"contract.wasm\" \"service.wasm\"))"],
         returns: "The created linera application's ID",
@@ -1311,6 +1311,29 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                 } else {
                     bail!("linera-start can only be used when REPL is in --linera mode");
                 }
+            })
+        },
+    };
+
+    const ENV_VAR: Self = Self {
+        name: "env-var",
+        summary: "Gets the values of an environment variable as a string, or errors",
+        info: &[],
+        format: "!(env-var \"KEY\")",
+        example: &["!(env-var \"HOME\")"],
+        returns: "The value of the environment variable",
+        run: |repl, args, _dir| {
+            Box::pin(async move {
+                let [&key] = repl.take(args)?;
+                let (key, _) = repl.reduce_aux(&key)?;
+                if key.tag != Tag::Str {
+                    bail!("Key must be a string");
+                }
+
+                let key = repl.zstore.fetch_string(&key);
+                let value = std::env::var(&key)?;
+                let value = repl.zstore.intern_string(&value);
+                Ok(value)
             })
         },
     };
@@ -1864,6 +1887,7 @@ pub(crate) fn meta_cmds<C1: Chipset<F>, C2: Chipset<F>>() -> MetaCmdsMap<F, C1, 
         MetaCmd::PROVE_PROTOCOL,
         MetaCmd::VERIFY_PROTOCOL,
         MetaCmd::LINERA_START,
+        MetaCmd::ENV_VAR,
         MetaCmd::MICROCHAIN_START,
         MetaCmd::MICROCHAIN_GET_GENESIS,
         MetaCmd::MICROCHAIN_GET_STATE,
