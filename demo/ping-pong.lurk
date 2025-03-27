@@ -14,13 +14,13 @@
                                              (lambda (msg) (begin (if (eq (car msg) :pong) (emit (list "got pong" msg))) (cons nil nil))))))))))) 
             (current-env)))
 
-!(def contract "linera-assets/concurrent_lurk_contract.wasm")
-!(def service "linera-assets/concurrent_lurk_service.wasm")
+; !(def contract "linera-assets/concurrent_lurk_contract.wasm")
+; !(def service "linera-assets/concurrent_lurk_service.wasm")
 
 !(def ping-chain-id "b7a85e90acb4badf7d04a239b2b6721bac885c3422cf3b93861695f1a5a33d9e")
 !(def ping1 (ping ping-chain-id))
 
-!(def pong-chain-id "83990e573e43c72806fe93036de3418b9d3e57108e1cf4dabb6b5893b3f1a3b2")
+!(def pong-chain-id "0db0ca3358f233ac25c3ecbcb1e9eaa86fa3f520fd1345155ec496973525ece2")
 !(def pong1 (pong pong-chain-id))
 
 ; !(defq ping2 !(transition ping1 pong-chain-id))
@@ -33,17 +33,17 @@
 
 ; !(defq pong3 !(transition pong2))
 
-; !(defq ping-chain-id !(microchain-start "127.0.0.1:8090" ping1))
-; !(defq pong-chain-id !(microchain-start "127.0.0.1:8090" pong1))
-; !(defq ping2 !(microchain-transition "127.0.0.1:8090" ping-chain-id ping1 pong-id))
-; !(defq pong2 !(microchain-transition "127.0.0.1:8090" pong-chain-id pong1 (car (cdr (cdr (car ping2))))))
-; !(defq ping3 !(microchain-transition "127.0.0.1:8090" ping-chain-id ping2))
-; !(defq ping4 !(microchain-transition "127.0.0.1:8090" ping-chain-id ping3 (car (cdr (cdr (car pong2))))))
-; !(defq pong3 !(microchain-transition "127.0.0.1:8090" pong-chain-id pong2))
+; !(defq ping-id !(microchain-start "127.0.0.1:8090" ping1))
+; !(defq pong-id !(microchain-start "127.0.0.1:8090" pong1))
+; !(defq ping2 !(microchain-transition "127.0.0.1:8090" ping-id ping1 pong-chain-id))
+; !(defq pong2 !(microchain-transition "127.0.0.1:8090" pong-id pong1 (car (cdr (cdr (car ping2))))))
+; !(defq ping3 !(microchain-transition "127.0.0.1:8090" ping-id ping2))
+; !(defq ping4 !(microchain-transition "127.0.0.1:8090" ping-id ping3 (car (cdr (cdr (car pong2))))))
+; !(defq pong3 !(microchain-transition "127.0.0.1:8090" pong-id pong2))
 
 ; ; For linera
-!(def port "8081")
-!(def owner "a8ab21a7d108d55035437078f2464e29524a3ea51eb0f4cf7563d1f7fc45ce2e")
+; !(def port "8081")
+; !(def owner "a8ab21a7d108d55035437078f2464e29524a3ea51eb0f4cf7563d1f7fc45ce2e")
 
 ; !(defq app-id !(linera-start ping-chain-id contract service))
 

@@ -103,12 +103,13 @@ pub(crate) async fn linera_service(wallet: Option<usize>, port: &str) -> Result<
     let mut handles = SERVICE_HANDLES.lock().await;
     handles.insert(port.to_string(), child);
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     Ok(())
 }
 
 /// Kill the linera service running on the specified port
 pub(crate) async fn linera_service_kill(port: &str) -> Result<(), Error> {
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     let mut handles = SERVICE_HANDLES.lock().await;
 
     if let Some(mut child) = handles.remove(port) {
@@ -123,7 +124,7 @@ pub(crate) async fn linera_service_kill(port: &str) -> Result<(), Error> {
         }
     }
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     Ok(())
 }
 
@@ -192,7 +193,7 @@ async fn execute_start_mutation(
     let mutation = format!(
         r#"mutation {{
             start(
-                owner: {owner},
+                owner: "{owner}",
                 chainState: "{genesis_blob_id}"
             )
         }}"#
