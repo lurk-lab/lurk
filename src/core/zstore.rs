@@ -312,7 +312,7 @@ pub struct ZStoreView<F: Hash + Eq> {
 impl<F: Hash + Eq + Serialize + Deserialize<'static>, C: Chipset<F>> ZStore<F, C> {
     pub fn to_view(self) -> ZStoreView<F> {
         ZStoreView {
-            dag: self.dag.into_iter().map(|(k, v)| (k, v)).collect(),
+            dag: self.dag.into_iter().collect(),
             hashes3: self
                 .hashes3
                 .into_iter()
@@ -343,9 +343,9 @@ impl<F: Hash + Eq + Serialize + Deserialize<'static>, C: Chipset<F>> ZStore<F, C
                 .into_iter()
                 .map(|(k, v)| (Array(k), Array(v)))
                 .collect(),
-            str_cache: self.str_cache.into_iter().map(|(k, v)| (k, v)).collect(),
-            sym_cache: self.sym_cache.into_iter().map(|(k, v)| (k, v)).collect(),
-            syn_cache: self.syn_cache.into_iter().map(|(k, v)| (k, v)).collect(),
+            str_cache: self.str_cache.into_iter().collect(),
+            sym_cache: self.sym_cache.into_iter().collect(),
+            syn_cache: self.syn_cache.into_iter().collect(),
             nil: self.nil,
             t: self.t,
             quote: self.quote,
@@ -896,10 +896,7 @@ impl<F: Field, C: Chipset<F>> ZStore<F, C> {
         env
     }
 
-    pub fn take<'a, const N: usize>(
-        &'a self,
-        mut args: &'a ZPtr<F>,
-    ) -> Result<[&'a ZPtr<F>; N]> {
+    pub fn take<'a, const N: usize>(&'a self, mut args: &'a ZPtr<F>) -> Result<[&'a ZPtr<F>; N]> {
         let mut res = Vec::with_capacity(N);
         for i in 0..N {
             if args.tag != Tag::Cons {

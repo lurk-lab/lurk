@@ -1,5 +1,5 @@
-use std::hash::Hash;
 use serde::{Deserialize, Serialize};
+use std::hash::Hash;
 
 use crate::core::parser::Span;
 

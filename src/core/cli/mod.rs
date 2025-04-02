@@ -1,6 +1,7 @@
 pub mod comm_data;
 mod config;
 mod debug;
+mod graphql_client;
 pub mod lurk_data;
 pub mod meta;
 pub mod microchain;
@@ -10,8 +11,8 @@ mod rdg;
 pub mod repl;
 #[cfg(test)]
 mod tests;
+mod timing;
 mod zdag;
-mod graphql_client;
 
 use anyhow::{bail, Result};
 use camino::Utf8PathBuf;
@@ -46,9 +47,11 @@ struct ReplArgs {
     #[arg(long)]
     lurkscript: bool,
 
+    /// Run the Linera graphql backend.
     #[arg(long)]
     linera: bool,
 
+    /// Which Linera wallet to use.
     #[arg(long)]
     with_wallet: Option<usize>,
 }
@@ -81,6 +84,12 @@ struct LoadArgs {
     /// Flag to load the file in demo mode
     #[arg(long)]
     demo: bool,
+
+    #[arg(long)]
+    linera: bool,
+
+    #[arg(long)]
+    with_wallet: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -93,6 +102,12 @@ struct LoadCli {
 
     #[arg(long)]
     demo: bool,
+
+    #[arg(long)]
+    linera: bool,
+
+    #[arg(long)]
+    with_wallet: Option<usize>,
 }
 
 fn parse_filename(file: &str) -> Result<Utf8PathBuf> {
@@ -125,11 +140,15 @@ impl LoadArgs {
             lurk_file,
             prove,
             demo,
+            linera,
+            with_wallet,
         } = self;
         LoadCli {
             lurk_file,
             prove,
             demo,
+            linera,
+            with_wallet,
         }
     }
 }
@@ -156,7 +175,7 @@ impl ReplCli {
 
 impl LoadCli {
     async fn run(&self) -> Result<()> {
-        let mut repl = Repl::new_native(false, false, None);
+        let mut repl = Repl::new_native(false, self.linera, self.with_wallet);
         repl.load_file(&self.lurk_file, self.demo).await?;
         if self.prove {
             repl.prove_last_reduction()?;

@@ -11,7 +11,7 @@ use std::{
     hash::Hash,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -259,6 +259,8 @@ impl MicrochainArgs {
                             let next_state =
                                 zstore.intern_cons(next_chain_result_zptr, next_callable_zptr);
 
+                            let start = Instant::now();
+
                             // and now the proof must verify, meaning that the user must have
                             // used the correct callable from the server state
                             let machine_proof =
@@ -270,6 +272,9 @@ impl MicrochainArgs {
                                 let verifier_version = get_verifier_version().to_string();
                                 return_msg!(Response::ProofVerificationFailed(verifier_version));
                             }
+
+                            let end = start.elapsed();
+                            println!("Proof verified in: {:?}", end);
 
                             // everything went okay... transition to the next state
 
@@ -439,11 +444,11 @@ impl<F: PrimeField32> PreprocessData<F> {
             PreprocessData::Spawn { pid } => {
                 format!("PreprocessData::Spawn {{ {} }}", zstore.fmt(pid))
             }
-            PreprocessData::Send => format!("PreprocessData::Send"),
+            PreprocessData::Send => "PreprocessData::Send".to_string(),
             PreprocessData::Receive { message } => {
                 format!("PreprocessData::Receive {{ {} }}", zstore.fmt(message))
             }
-            PreprocessData::Result => format!("PreprocessData::Result"),
+            PreprocessData::Result => "PreprocessData::Result".to_string(),
         }
     }
 }
@@ -462,14 +467,14 @@ pub enum PostprocessData<F> {
 impl<F: PrimeField32> PostprocessData<F> {
     fn fmt<C1: Chipset<F>>(&self, zstore: &mut ZStore<F, C1>) -> String {
         match self {
-            PostprocessData::Spawn => format!("PostprocessData::Spawn"),
+            PostprocessData::Spawn => "PostprocessData::Spawn".to_string(),
             PostprocessData::Send { other_pid, message } => format!(
                 "PostprocessData::Send {{ {} {} }}",
                 zstore.fmt(other_pid),
                 zstore.fmt(message)
             ),
-            PostprocessData::Receive => format!("PostprocessData::Receive"),
-            PostprocessData::Result => format!("PostprocessData::Result"),
+            PostprocessData::Receive => "PostprocessData::Receive".to_string(),
+            PostprocessData::Result => "PostprocessData::Result".to_string(),
         }
     }
 }
@@ -491,13 +496,13 @@ fn preprocess<'a, C1: Chipset<F>>(
     let receive = zstore.intern_symbol_no_lang(&Symbol::key(&["receive"]));
 
     if control == spawn {
-        let [&quoted_pid] = zstore.take(&call_args)?;
+        let [&quoted_pid] = zstore.take(call_args)?;
         let [_, &pid] = zstore.take(&quoted_pid)?;
         Ok(PreprocessData::Spawn { pid })
     } else if control == send {
         Ok(PreprocessData::Send)
     } else if control == receive {
-        let [&quoted_message] = zstore.take(&call_args)?;
+        let [&quoted_message] = zstore.take(call_args)?;
         let [_, &message] = zstore.take(&quoted_message)?;
         Ok(PreprocessData::Receive { message })
     } else {
@@ -505,8 +510,8 @@ fn preprocess<'a, C1: Chipset<F>>(
     }
 }
 
-pub fn postprocess<'a, C1: Chipset<F>>(
-    zstore: &'a mut ZStore<F, C1>,
+pub fn postprocess<C1: Chipset<F>>(
+    zstore: &mut ZStore<F, C1>,
     chain_state: ChainState,
 ) -> Result<PostprocessData<F>> {
     let chain_state = chain_state.into_zptr(zstore);

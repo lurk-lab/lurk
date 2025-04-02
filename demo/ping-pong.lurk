@@ -33,13 +33,13 @@
 
 ; !(defq pong3 !(transition pong2))
 
-; !(defq ping-id !(microchain-start "127.0.0.1:8090" ping1))
-; !(defq pong-id !(microchain-start "127.0.0.1:8090" pong1))
-; !(defq ping2 !(microchain-transition "127.0.0.1:8090" ping-id ping1 pong-chain-id))
-; !(defq pong2 !(microchain-transition "127.0.0.1:8090" pong-id pong1 (car (cdr (cdr (car ping2))))))
-; !(defq ping3 !(microchain-transition "127.0.0.1:8090" ping-id ping2))
-; !(defq ping4 !(microchain-transition "127.0.0.1:8090" ping-id ping3 (car (cdr (cdr (car pong2))))))
-; !(defq pong3 !(microchain-transition "127.0.0.1:8090" pong-id pong2))
+!(defq ping-id !(microchain-start "127.0.0.1:8090" ping1))
+!(defq pong-id !(microchain-start "127.0.0.1:8090" pong1))
+!(defq ping2 !(microchain-transition "127.0.0.1:8090" ping-id ping1 pong-chain-id))
+!(defq pong2 !(microchain-transition "127.0.0.1:8090" pong-id pong1 (car (cdr (cdr (car ping2))))))
+!(defq ping3 !(microchain-transition "127.0.0.1:8090" ping-id ping2))
+!(defq ping4 !(microchain-transition "127.0.0.1:8090" ping-id ping3 (car (cdr (cdr (car pong2))))))
+!(defq pong3 !(microchain-transition "127.0.0.1:8090" pong-id pong2))
 
 ; ; For linera
 ; !(def port "8081")

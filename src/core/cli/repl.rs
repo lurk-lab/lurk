@@ -14,7 +14,15 @@ use rustyline::{
 };
 use sp1_stark::{CpuProver, StarkGenericConfig};
 use sp1_stark::{MachineProver, SP1CoreOpts};
-use std::{fmt::Debug, fs, io::{self, Write}, marker::PhantomData, process::Command, sync::Arc};
+use std::{
+    array,
+    fmt::Debug,
+    fs,
+    io::{self, Write},
+    marker::PhantomData,
+    process::Command,
+    sync::Arc,
+};
 
 use crate::{
     core::{
@@ -25,6 +33,7 @@ use crate::{
             meta::{meta_cmds, MetaCmdsMap},
             paths::{current_dir, proofs_dir, repl_history},
             proofs::{CachedProof, CryptoProof},
+            timing::{register_client, save_benchmark_results},
         },
         eval_direct::build_lurk_toplevel,
         lang::Lang,
@@ -161,7 +170,12 @@ pub(crate) struct Repl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> {
 }
 
 impl<C2: Chipset<BabyBear>> Repl<BabyBear, LurkChip, C2> {
-    pub(crate) fn new(lang: Lang<BabyBear, C2>, lurkscript: bool, linera: bool, wallet: Option<usize>) -> Self {
+    pub(crate) fn new(
+        lang: Lang<BabyBear, C2>,
+        lurkscript: bool,
+        linera: bool,
+        wallet: Option<usize>,
+    ) -> Self {
         let (toplevel, mut zstore, lang_symbols) = build_lurk_toplevel(lang);
         let func_indices = FuncIndices::new(&toplevel);
         let env = zstore.intern_empty_env();
@@ -253,6 +267,10 @@ fn pretty_iterations_display(iterations: usize) -> String {
 const VI_EDITORS: [&str; 3] = ["vi", "vim", "nvim"];
 
 impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
+    pub(crate) fn client(&self) -> usize {
+        self.wallet.unwrap_or(0)
+    }
+
     /// Deconstructs the arguments of a cons list expected to have a known number
     /// of elements. Errors if the list has a different length.
     pub(crate) fn take<'a, const N: usize>(
@@ -260,6 +278,20 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         args: &'a ZPtr<F>,
     ) -> Result<[&'a ZPtr<F>; N]> {
         self.zstore.take(args)
+    }
+
+    pub(crate) fn take_string<const N: usize>(&mut self, args: &ZPtr<F>) -> Result<[String; N]> {
+        let args: [_; N] = self.zstore.take(args)?;
+        let args: [ZPtr<F>; N] = array::from_fn(|i| *args[i]);
+        let mut res = vec![];
+        for (i, arg) in args.iter().enumerate() {
+            let (arg, _) = self.reduce_aux(arg)?;
+            if arg.tag != Tag::Str {
+                bail!("Arg {i} must be a string");
+            }
+            res.push(self.zstore.fetch_string(&arg));
+        }
+        Ok(res.try_into().unwrap())
     }
 
     pub(crate) fn car_cdr(&self, zptr: &ZPtr<F>) -> (&ZPtr<F>, &ZPtr<F>) {
@@ -538,7 +570,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         }
         Ok(result)
     }
-    
+
     async fn intern_syntax_env(
         &mut self,
         env: &[(Arc<Symbol>, Syntax<F>)],
@@ -558,7 +590,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             Syntax::Meta(_, sym, args) => {
                 let args_vec = Box::pin(self.intern_syntax_slice(args, file_dir)).await?;
                 let args = self.zstore.intern_list(args_vec);
-    
+
                 if let Some(meta_cmd) = self.meta_cmds.get(sym) {
                     (meta_cmd.run)(self, &args, file_dir).await?
                 } else {
@@ -626,7 +658,8 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         file_dir: &Utf8Path,
         demo: bool,
     ) -> Result<Option<Span<'a>>> {
-        let Some((syntax_start, mut new_input, zptr, meta)) = self.process(input, file_dir).await? else {
+        let Some((syntax_start, mut new_input, zptr, meta)) = self.process(input, file_dir).await?
+        else {
             return Ok(None);
         };
         if demo {
@@ -662,7 +695,7 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             bail!("Can't get the parent of {file_path}");
         };
 
-        let input = if file_path.extension().map_or(false, |ext| ext == "ls") {
+        let input: String = if file_path.extension().map_or(false, |ext| ext == "ls") {
             // Compile LurkScript (.ls) to Lurk using `lurkscript -c <filename>`
             let output = Command::new("lurkscript")
                 .arg("-c")
@@ -688,13 +721,32 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             println!("Loading {file_path}");
         }
 
+        register_client(self.client()).await;
+
         let mut input = Span::new(&input);
+        let mut error = None;
         loop {
             match self.handle_form(input, file_dir, demo).await {
-                Ok(None) => return Ok(()),
+                Ok(None) => break,
                 Ok(Some(new_input)) => input = new_input,
-                Err(e) => return Err(e),
+                Err(e) => {
+                    error = Some(e);
+                    break;
+                }
             }
+        }
+
+        let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| ".".into());
+        save_benchmark_results(&format!(
+            "{}/client_{}_benchmarks.json",
+            log_dir,
+            self.client()
+        ))
+        .await?;
+
+        match error {
+            None => Ok(()),
+            Some(e) => Err(e),
         }
     }
 
@@ -726,6 +778,8 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
         }
 
         let pwd_path = current_dir().expect("Couldn't get current directory");
+
+        register_client(self.client()).await;
 
         loop {
             match editor.readline(&self.prompt_marker()) {
@@ -775,6 +829,13 @@ impl<F: PrimeField32, C1: Chipset<F>, C2: Chipset<F>> Repl<F, C1, C2> {
             }
         }
         editor.save_history(repl_history)?;
+        let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| ".".into());
+        save_benchmark_results(&format!(
+            "{}/client_{}_benchmarks.json",
+            log_dir,
+            self.client()
+        ))
+        .await?;
 
         Ok(())
     }

@@ -1,12 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, process::Stdio, sync::Arc};
 
 use graphql_client::{reqwest::post_graphql, GraphQLQuery};
 use once_cell::sync::Lazy;
 use reqwest::Client;
-use tempfile::tempdir;
 use thiserror::Error;
 use tokio::{
-    fs, io,
+    io,
     process::{Child, Command},
     sync::Mutex,
 };
@@ -51,31 +50,6 @@ pub(crate) fn reqwest_client() -> reqwest::Client {
     reqwest::ClientBuilder::new().build().unwrap()
 }
 
-// pub type ChainId = String;
-pub type CryptoHash = String;
-
-// #[derive(GraphQLQuery)]
-// #[graphql(
-//     schema_path = "linera-assets/gql/chain_schema.graphql",
-//     query_path = "linera-assets/gql/chain_mutation.graphql",
-//     response_derives = "Debug"
-// )]
-// struct PublishDataBlob;
-
-// pub(crate) async fn publish_data_blob(
-//     port: &str,
-//     chain_id: ChainId,
-//     data: Vec<u8>,
-// ) -> Result<CryptoHash, Error> {
-//     let client = reqwest_client();
-//     let bytes = data.into_iter().map(|b| b as i64).collect::<Vec<_>>();
-//     let variables = publish_data_blob::Variables { chain_id, bytes };
-//     let addr = format!("http://127.0.0.1:{}", port);
-//     Ok(request::<PublishDataBlob, _>(&client, &addr, variables)
-//         .await?
-//         .publish_data_blob)
-// }
-
 pub(crate) fn linera(wallet: Option<usize>) -> Command {
     match wallet {
         Some(i) => {
@@ -91,14 +65,20 @@ static SERVICE_HANDLES: Lazy<Arc<Mutex<HashMap<String, Child>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// Spawn a background task that runs the linera service
-pub(crate) async fn linera_service(wallet: Option<usize>, port: &str) -> Result<(), Error> {
-    println!("Starting linera service --port {}", port);
+pub(crate) async fn linera_service(
+    wallet: Option<usize>,
+    port: &str,
+    quiet: bool,
+) -> Result<(), Error> {
+    // println!("Starting linera service --port {}", port);
+    let mut command = linera(wallet);
+    command.arg("service").arg("--port").arg(port);
 
-    let child = linera(wallet)
-        .arg("service")
-        .arg("--port")
-        .arg(port)
-        .spawn()?;
+    if quiet {
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+    }
+
+    let child = command.spawn()?;
 
     let mut handles = SERVICE_HANDLES.lock().await;
     handles.insert(port.to_string(), child);
@@ -109,13 +89,12 @@ pub(crate) async fn linera_service(wallet: Option<usize>, port: &str) -> Result<
 
 /// Kill the linera service running on the specified port
 pub(crate) async fn linera_service_kill(port: &str) -> Result<(), Error> {
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     let mut handles = SERVICE_HANDLES.lock().await;
 
     if let Some(mut child) = handles.remove(port) {
         match child.kill().await {
             Ok(_) => {
-                println!("Service on port {} terminated via handle", port);
+                // println!("Service on port {} terminated via handle", port);
                 return Ok(());
             }
             Err(e) => {
@@ -128,31 +107,47 @@ pub(crate) async fn linera_service_kill(port: &str) -> Result<(), Error> {
     Ok(())
 }
 
-pub(crate) async fn publish_data_blob(
-    wallet: Option<usize>,
-    chain_id: &str,
-    data: &[u8],
-) -> Result<String, Error> {
-    let temp_dir = tempdir()?;
-    let path = temp_dir.path().join("data");
-    fs::write(&path, &data).await?;
+pub(crate) async fn post_query(gql_url: &str, query: &str) -> Result<serde_json::Value, Error> {
+    println!("==============================================================");
+    println!("Posting querying at {gql_url}... (query elided)");
+    // println!("{}", query);
 
-    let output = linera(wallet)
-        .arg("publish-data-blob")
-        .arg(path)
-        .arg(chain_id)
-        .output()
+    let client = reqwest::Client::new();
+    let response = client
+        .post(gql_url)
+        .body(
+            serde_json::json!({
+                "query": query
+            })
+            .to_string(),
+        )
+        .header("Content-Type", "application/json")
+        .send()
         .await?;
+    let result: serde_json::Value = response.json().await?;
+    let result = result["data"].clone();
 
-    if !output.status.success() {
-        panic!(
-            "publish-data-blob command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+    println!("Result:");
+    println!("{}", result);
+    println!("==============================================================\n");
 
-    // Extract the GENESIS_BLOB_ID from the output
-    let blob_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(result)
+}
+
+pub(crate) async fn publish_data_blob(
+    gql_url: &str,
+    chain_id: &str,
+    bytes: &[u8],
+) -> Result<String, Error> {
+    let query = format!(
+        r#"mutation {{
+            publishDataBlob(chainId: "{chain_id}", bytes: {bytes:?} )
+        }}"#
+    );
+
+    let result = post_query(gql_url, &query).await?;
+    let blob_id = result["publishDataBlob"].as_str().unwrap().to_string();
+
     Ok(blob_id)
 }
 
@@ -162,7 +157,7 @@ pub(crate) async fn linera_create(
     contract: &str,
     service: &str,
 ) -> Result<String, Error> {
-    println!("Creating application {}...", contract);
+    // println!("Creating application {}...", contract);
     let output = linera(wallet)
         .arg("--wait-for-outgoing-messages")
         .arg("publish-and-create")
@@ -188,8 +183,6 @@ async fn execute_start_mutation(
     owner: &str,
     genesis_blob_id: &str,
 ) -> Result<(), Error> {
-    let client = reqwest::Client::new();
-
     let mutation = format!(
         r#"mutation {{
             start(
@@ -199,57 +192,22 @@ async fn execute_start_mutation(
         }}"#
     );
 
-    println!("querying: {}", mutation);
-
-    client
-        .post(gql_url)
-        .body(
-            serde_json::json!({
-                "query": mutation
-            })
-            .to_string(),
-        )
-        .header("Content-Type", "application/json")
-        .send()
-        .await?;
-
+    let _ = post_query(gql_url, &mutation).await?;
     Ok(())
 }
 
 async fn execute_ready_query(gql_url: &str) -> Result<(String, String), Error> {
-    let client = reqwest::Client::new();
-    let query = format!(
-        r#"query {{
-            ready {{
+    let query = r#"query {
+            ready {
                 messageId chainId
-            }}
-        }}"#
-    );
+            }
+        }"#
+    .to_string();
 
-    println!("querying: {}", query);
+    let result = post_query(gql_url, &query).await?;
 
-    let response = client
-        .post(gql_url)
-        .body(
-            serde_json::json!({
-                "query": query
-            })
-            .to_string(),
-        )
-        .header("Content-Type", "application/json")
-        .send()
-        .await?;
-    let result: serde_json::Value = response.json().await?;
-    println!("result: {}", result);
-    let chain_id = result["data"]["ready"]["chainId"]
-        .as_str()
-        .ok_or(Error::String("Could not extract chainId".to_string()))?
-        .to_string();
-
-    let message_id = result["data"]["ready"]["messageId"]
-        .as_str()
-        .ok_or(Error::String("Could not extract messageId".to_string()))?
-        .to_string();
+    let chain_id = result["ready"]["chainId"].as_str().unwrap().to_string();
+    let message_id = result["ready"]["messageId"].as_str().unwrap().to_string();
 
     Ok((chain_id, message_id))
 }
@@ -260,7 +218,7 @@ async fn setup_microchain(
     message_id: &str,
 ) -> Result<(), Error> {
     linera(wallet)
-        .args(&["assign", "--owner", owner, "--message-id", message_id])
+        .args(["assign", "--owner", owner, "--message-id", message_id])
         .status()
         .await?;
 
@@ -268,25 +226,19 @@ async fn setup_microchain(
 }
 
 pub async fn microchain_start(
-    wallet: Option<usize>,
     port: &str,
     chain: &str,
     app: &str,
     owner: &str,
     genesis: &[u8],
 ) -> Result<(), Error> {
-    println!("Starting microchain...");
+    // println!("Starting microchain...");
 
-    let gql_url = format!(
-        "http://localhost:{}/chains/{}/applications/{}",
-        port, chain, app
-    );
+    let gql_url = format!("http://127.0.0.1:{port}");
+    let app_gql_url = format!("http://127.0.0.1:{port}/chains/{chain}/applications/{app}");
 
-    let genesis_blob_id = publish_data_blob(wallet, chain, genesis).await?;
-
-    linera_service(wallet, port).await?;
-    execute_start_mutation(&gql_url, owner, &genesis_blob_id).await?;
-    linera_service_kill(port).await?;
+    let genesis_blob_id = publish_data_blob(&gql_url, chain, genesis).await?;
+    execute_start_mutation(&app_gql_url, owner, &genesis_blob_id).await?;
 
     Ok(())
 }
@@ -298,15 +250,12 @@ pub async fn setup_spawn(
     app: &str,
     owner: &str,
 ) -> Result<String, Error> {
-    let gql_url = format!(
-        "http://localhost:{}/chains/{}/applications/{}",
-        port, chain, app
-    );
-    linera_service(wallet, port).await?;
-    let (chain_id, message_id) = execute_ready_query(&gql_url).await?;
-    linera_service_kill(port).await?;
+    let app_gql_url = format!("http://127.0.0.1:{port}/chains/{chain}/applications/{app}");
+    let (chain_id, message_id) = execute_ready_query(&app_gql_url).await?;
 
-    setup_microchain(wallet, &owner, &message_id).await?;
+    linera_service_kill(port).await?;
+    setup_microchain(wallet, owner, &message_id).await?;
+    linera_service(wallet, port, false).await?;
 
     Ok(chain_id)
 }
@@ -330,6 +279,8 @@ pub(crate) async fn microchain_get_state(addr_str: &str) -> Result<ChainState, E
         bincode::deserialize(&bytes).expect("couldn't deserialize chain state");
     Ok(chain_state)
 }
+
+type CryptoHash = String;
 
 #[derive(GraphQLQuery)]
 #[graphql(

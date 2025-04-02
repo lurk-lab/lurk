@@ -36,6 +36,7 @@ use super::{
     proofs::{get_verifier_version, CachedProof, ChainProof, OpaqueChainProof, ProtocolProof},
     rdg::rand_digest,
     repl::Repl,
+    timing::{time_async_operation, time_operation},
 };
 
 #[allow(clippy::type_complexity)]
@@ -1304,12 +1305,74 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                     let service = repl.zstore.fetch_string(&service);
 
                     let app_id =
-                        graphql_client::linera_create(repl.wallet, &chain_id, &contract, &service)
+                        time_async_operation(repl.wallet.unwrap(), "data transfer", 
+                        || graphql_client::linera_create(repl.wallet, &chain_id, &contract, &service))
                             .await?;
                     let app_id = repl.zstore.intern_string(&app_id);
                     Ok(app_id)
                 } else {
                     bail!("linera-start can only be used when REPL is in --linera mode");
+                }
+            })
+        },
+    };
+
+    const LINERA_SERVICE: Self = Self {
+        name: "linera-service",
+        summary: "Run a GraphQL service to explore and extend the chains of a Linera wallet",
+        info: &[],
+        format: "!(linera-service <port>)",
+        example: &["!(defq success !(linera-service \"8080\"))"],
+        returns: "t if successfully started, nil otherwise",
+        run: |repl, args, _dir| {
+            Box::pin(async move {
+                if repl.linera {
+                    let [port] = repl.take_string(args)?;
+
+                    let res = time_async_operation(repl.wallet.unwrap(), "service", || {
+                        graphql_client::linera_service(repl.wallet, &port, false)
+                    })
+                    .await;
+
+                    match res {
+                        Ok(()) => Ok(*repl.zstore.t()),
+                        Err(e) => {
+                            println!("linera-service error: {:?}", e);
+                            Ok(*repl.zstore.nil())
+                        }
+                    }
+                } else {
+                    bail!("linera-service can only be used when REPL is in --linera mode");
+                }
+            })
+        },
+    };
+
+    const LINERA_SERVICE_KILL: Self = Self {
+        name: "linera-service-kill",
+        summary: "Kills the Linera GraphQL service started by linera-service",
+        info: &[],
+        format: "!(linera-service-kill <port>)",
+        example: &["!(defq success !(linera-service-kill \"8080\"))"],
+        returns: "t if successfully killed, nil otherwise",
+        run: |repl, args, _dir| {
+            Box::pin(async move {
+                if repl.linera {
+                    let [port] = repl.take_string(args)?;
+                    let res = time_async_operation(repl.wallet.unwrap(), "service", || {
+                        graphql_client::linera_service_kill(&port)
+                    })
+                    .await;
+
+                    match res {
+                        Ok(()) => Ok(*repl.zstore.t()),
+                        Err(e) => {
+                            println!("linera-service-kill error: {:?}", e);
+                            Ok(*repl.zstore.nil())
+                        }
+                    }
+                } else {
+                    bail!("linera-service-kill can only be used when REPL is in --linera mode");
                 }
             })
         },
@@ -1431,20 +1494,16 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             let owner = repl.zstore.fetch_string(&owner);
 
             let genesis_bytes = bincode::serialize(&genesis)?;
-            graphql_client::microchain_start(
-                repl.wallet,
-                &port,
-                &chain,
-                &app,
-                &owner,
-                &genesis_bytes,
-            )
+            time_async_operation(repl.wallet.unwrap(), "start", || {
+                graphql_client::microchain_start(&port, &chain, &app, &owner, &genesis_bytes)
+            })
             .await?;
 
             let postprocess = postprocess(&mut repl.zstore, genesis)?;
             if let PostprocessData::Spawn = postprocess {
                 let child_id =
                     graphql_client::setup_spawn(repl.wallet, &port, &chain, &app, &owner).await?;
+                std::env::set_var("PONG_CHAIN", &child_id);
                 println!("Process spawned a new chain: {child_id}");
             }
 
@@ -1546,11 +1605,11 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         })
     }
 
-    fn linera_args<'a>(
+    fn linera_args(
         repl: &mut Repl<F, C1, C2>,
-        args: &'a ZPtr<F>,
+        args: &ZPtr<F>,
     ) -> Result<(String, String, String, ZPtr<F>)> {
-        let (&port, &rest) = repl.car_cdr(&args);
+        let (&port, &rest) = repl.car_cdr(args);
         let (&chain_id, &rest) = repl.car_cdr(&rest);
         let (&app_id, &rest) = repl.car_cdr(&rest);
         let (port, _) = repl.reduce_aux(&port)?;
@@ -1576,8 +1635,8 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                 "http://127.0.0.1:{}/chains/{}/applications/{}",
                 port, chain_id, app_id
             );
-            
-            linera_service(repl.wallet, &port).await?;
+
+            linera_service(repl.wallet, &port, false).await?;
             let chain_state = graphql_client::microchain_get_state(&id).await?;
             linera_service_kill(&port).await?;
 
@@ -1602,18 +1661,22 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
         },
     };
 
-    fn core_microchain_transition(
+    async fn core_microchain_transition(
         repl: &mut Repl<F, C1, C2>,
         rest: &ZPtr<F>,
     ) -> Result<(ZPtr<F>, ChainProof)> {
-        let (&current_state_expr, &call_args) = repl.car_cdr(&rest);
+        let (&current_state_expr, &call_args) = repl.car_cdr(rest);
         let (state, call_args) = Self::transition_call(repl, &current_state_expr, call_args)?;
         if state.tag != Tag::Cons {
             bail!("New state is not a pair");
         }
         let (&state_chain_result, &state_callable) = repl.zstore.fetch_tuple11(&state);
 
-        let proof_key: String = repl.prove_last_reduction()?;
+        // TODO: time here
+        let proof_key: String = time_operation(repl.client(), "proof", || {
+            repl.prove_last_reduction()
+        })
+        .await?;
         let cached_proof = Self::load_cached_proof(&proof_key)?;
         let crypto_proof: super::proofs::CryptoProof = cached_proof.crypto_proof;
 
@@ -1649,12 +1712,13 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
             }
             let (id, _) = repl.reduce_aux(&id_expr)?;
 
-            let (state, chain_proof) = Self::core_microchain_transition(repl, &rest)?;
+            let (state, chain_proof) = Self::core_microchain_transition(repl, &rest).await?;
 
             let addr_str = repl.zstore.fetch_string(&addr);
             let stream = &mut TcpStream::connect(addr_str)?;
             write_data(stream, Request::Transition(id.digest, chain_proof))?;
-            match read_data::<Response>(stream)? {
+            let res = time_operation(0, "verify", || read_data::<Response>(stream)).await?;
+            match res {
                 Response::ProofAccepted => {
                     println!("Proof accepted by the server");
                     Ok(state)
@@ -1680,19 +1744,21 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
     ) -> Pin<Box<dyn Future<Output = Result<ZPtr<F>>> + 'a>> {
         Box::pin(async move {
             let (port, chain_id, app_id, rest) = Self::linera_args(repl, args)?;
-            let id = format!(
-                "http://127.0.0.1:{}/chains/{}/applications/{}",
-                port, chain_id, app_id
-            );
+            let gql_url = format!("http://127.0.0.1:{port}");
+            let app_gql_url =
+                format!("http://127.0.0.1:{port}/chains/{chain_id}/applications/{app_id}");
 
-            let (state, chain_proof) = Self::core_microchain_transition(repl, &rest)?;
+            let (state, chain_proof) = Self::core_microchain_transition(repl, &rest).await?;
 
             let data = bincode::serialize(&chain_proof)?;
-            let hash = graphql_client::publish_data_blob(repl.wallet, &chain_id, &data).await?;
-
-            graphql_client::linera_service(repl.wallet, &port).await?;
-            let res = graphql_client::microchain_transition(&id, hash).await;
-            graphql_client::linera_service_kill(&port).await?;
+            let hash = time_async_operation(repl.wallet.unwrap(), "data transfer", || {
+                graphql_client::publish_data_blob(&gql_url, &chain_id, &data)
+            })
+            .await?;
+            let res = time_async_operation(repl.wallet.unwrap(), "verify", || {
+                graphql_client::microchain_transition(&app_gql_url, hash)
+            })
+            .await;
 
             match res {
                 Ok(res) => {
@@ -1700,8 +1766,7 @@ impl<C1: Chipset<F>, C2: Chipset<F>> MetaCmd<F, C1, C2> {
                     Ok(state)
                 }
                 Err(e) => {
-                    let msg = format!("Proof verification failed: {}", e);
-                    bail!(msg);
+                    bail!("Proof verification failed: {}", e);
                 }
             }
         })
@@ -1887,6 +1952,8 @@ pub(crate) fn meta_cmds<C1: Chipset<F>, C2: Chipset<F>>() -> MetaCmdsMap<F, C1, 
         MetaCmd::PROVE_PROTOCOL,
         MetaCmd::VERIFY_PROTOCOL,
         MetaCmd::LINERA_START,
+        MetaCmd::LINERA_SERVICE,
+        MetaCmd::LINERA_SERVICE_KILL,
         MetaCmd::ENV_VAR,
         MetaCmd::MICROCHAIN_START,
         MetaCmd::MICROCHAIN_GET_GENESIS,
